@@ -1,110 +1,96 @@
-"""微信公众号文章爬取 - 主入口"""
+"""遗留 CLI 兼容入口。"""
 
 import json
-import time
 from datetime import datetime
+from pathlib import Path
 
-from config import ACCOUNTS, ARTICLE_COUNT, COOKIE, TOKEN, REQUEST_INTERVAL
-from fetcher import fetch_account_articles, set_credentials
-from parser import enrich_articles_with_content
-from notifier import notify
-from summarizer import enrich_articles_with_summary
+from backend import runtime_config
+from backend.services.crawler_service import crawler_service
+from backend.services.feishu_service import push_accounts
+from backend.services.wechat_auth import AuthError, get_credentials
+
+
+def _write_summary_file(result: dict) -> None:
+    today = datetime.now().strftime('%Y-%m-%d')
+    summary_path = Path('output') / f'{today} AI-summary.json'
+    summary_data = []
+    for account in result['accounts']:
+        for article in account.get('articles', []):
+            if article.get('summary'):
+                summary_data.append(
+                    {
+                        'account': account.get('name', ''),
+                        'title': article.get('title', ''),
+                        'url': article.get('url', ''),
+                        'publish_time': article.get('publish_time', ''),
+                        'summary': article['summary'],
+                    }
+                )
+    if summary_data:
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(json.dumps(summary_data, ensure_ascii=False, indent=2), encoding='utf-8')
+        print(f'AI 摘要已保存到: {summary_path.as_posix()}')
+
+
+def _push_feishu_if_needed(result: dict) -> None:
+    webhook = runtime_config.FEISHU_WEBHOOK
+    if not webhook or not result.get('accounts'):
+        return
+
+    try:
+        push_accounts(webhook, result['accounts'])
+        print('飞书推送成功')
+    except Exception as exc:
+        print(f'飞书推送失败: {exc}')
 
 
 def main():
-    # 获取凭证：优先使用 config 中的手动配置，否则自动登录
-    if COOKIE and TOKEN:
-        cookie, token = COOKIE, TOKEN
-        print("使用 config.py 中的手动凭证")
+    if runtime_config.COOKIE and runtime_config.TOKEN:
+        cookie, token = runtime_config.COOKIE, runtime_config.TOKEN
+        print('使用环境变量中的手动凭证')
     else:
         try:
-            from auth import get_credentials, AuthError
+            credentials = get_credentials()
+            cookie, token = credentials['cookie'], credentials['token']
+        except AuthError as exc:
+            print(f'登录失败: {exc}')
+            return
         except ImportError:
-            print("=" * 50)
-            print("错误: 自动登录需要安装 playwright")
+            print('=' * 50)
+            print('错误: 自动登录需要安装 playwright')
             print()
-            print("请运行以下命令安装:")
-            print("  pip3 install playwright")
-            print("  playwright install chromium")
+            print('请运行以下命令安装:')
+            print('  pip3 install playwright')
+            print('  playwright install chromium')
             print()
-            print("或者在 config.py 中手动填入 COOKIE 和 TOKEN")
-            print("=" * 50)
+            print('或者设置环境变量 WECHAT_COOKIE / WECHAT_TOKEN')
+            print('=' * 50)
             return
 
-        try:
-            creds = get_credentials()
-            cookie, token = creds["cookie"], creds["token"]
-        except AuthError as e:
-            print(f"登录失败: {e}")
-            return
+    crawler_service.set_credentials(cookie, token)
+    crawler_service.apply_runtime_settings(runtime_config.REQUEST_INTERVAL)
 
-    set_credentials(cookie, token)
+    print(f'开始爬取 {len(runtime_config.ACCOUNTS)} 个公众号，每个 {runtime_config.ARTICLE_COUNT} 篇文章')
+    print(f'请求间隔: {runtime_config.REQUEST_INTERVAL} 秒')
 
-    print(f"开始爬取 {len(ACCOUNTS)} 个公众号，每个 {ARTICLE_COUNT} 篇文章")
-    print(f"请求间隔: {REQUEST_INTERVAL} 秒")
-
+    accounts = crawler_service.crawl_accounts(runtime_config.ACCOUNTS, runtime_config.ARTICLE_COUNT)
     result = {
-        "fetch_time": datetime.now().isoformat(),
-        "accounts": [],
+        'fetch_time': datetime.now().isoformat(),
+        'accounts': accounts,
     }
 
-    for i, name in enumerate(ACCOUNTS):
-        account_data = fetch_account_articles(name, ARTICLE_COUNT)
-        if account_data:
-            # 抓取正文内容
-            print(f"  开始抓取正文内容...")
-            enrich_articles_with_content(account_data["articles"])
-
-            # 将 Unix 时间戳转为可读格式
-            for article in account_data["articles"]:
-                ts = article.get("publish_time", 0)
-                if isinstance(ts, int) and ts > 0:
-                    article["publish_time"] = datetime.fromtimestamp(ts).strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    )
-
-            # 生成 AI 摘要
-            enrich_articles_with_summary(account_data["articles"])
-
-            result["accounts"].append(account_data)
-
-        # 公众号之间的间隔
-        if i < len(ACCOUNTS) - 1:
-            print(f"\n等待 {REQUEST_INTERVAL} 秒后处理下一个公众号...")
-            time.sleep(REQUEST_INTERVAL)
-
-    # 保存结果
-    output_path = "output/articles.json"
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-
-    # 保存 AI 摘要文件
-    today = datetime.now().strftime("%Y-%m-%d")
-    summary_path = f"output/{today} AI-summary.json"
-    summary_data = []
-    for account in result["accounts"]:
-        for article in account.get("articles", []):
-            if article.get("summary"):
-                summary_data.append({
-                    "account": account.get("name", ""),
-                    "title": article.get("title", ""),
-                    "url": article.get("url", ""),
-                    "publish_time": article.get("publish_time", ""),
-                    "summary": article["summary"],
-                })
-    if summary_data:
-        with open(summary_path, "w", encoding="utf-8") as f:
-            json.dump(summary_data, f, ensure_ascii=False, indent=2)
-        print(f"AI 摘要已保存到: {summary_path}")
+    output_path = Path('output') / 'articles.json'
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+    _write_summary_file(result)
 
     print(f"\n{'=' * 50}")
-    print(f"爬取完成！")
-    print(f"共获取 {sum(len(a['articles']) for a in result['accounts'])} 篇文章")
-    print(f"结果已保存到: {output_path}")
+    print('爬取完成！')
+    print(f"共获取 {sum(len(account['articles']) for account in result['accounts'])} 篇文章")
+    print(f'结果已保存到: {output_path.as_posix()}')
 
-    # 推送到飞书群
-    notify(result)
+    _push_feishu_if_needed(result)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

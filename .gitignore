@@ -2,3 +2,17 @@ browser_data/
 output/
 __pycache__/
 *.pyc
+node_modules/
+dist/
+build/
+*.log
+.env*
+.venv/
+venv/
+*.egg-info/
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/
