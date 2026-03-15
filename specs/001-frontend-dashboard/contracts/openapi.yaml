@@ -1,0 +1,203 @@
+openapi: 3.0.3
+info:
+  title: WeChat News Fetch Dashboard API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8000
+paths:
+  /api/auth/login:
+    post:
+      summary: Start backend QR login flow
+      responses:
+        '202':
+          description: Login flow started
+  /api/auth/status:
+    get:
+      summary: Get current auth status
+      responses:
+        '200':
+          description: Current auth state
+  /api/accounts:
+    get:
+      summary: List accounts
+      responses:
+        '200':
+          description: Account list
+    post:
+      summary: Add account
+      responses:
+        '201':
+          description: Account created
+  /api/accounts/{accountId}:
+    patch:
+      summary: Update account selection or name
+      parameters:
+        - in: path
+          name: accountId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Account updated
+    delete:
+      summary: Delete account
+      parameters:
+        - in: path
+          name: accountId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Account deleted
+  /api/crawl:
+    post:
+      summary: Start a crawl batch for selected accounts
+      responses:
+        '202':
+          description: Crawl batch accepted
+        '409':
+          description: Another crawl is already active
+  /api/crawl/current:
+    get:
+      summary: Get current active crawl task
+      responses:
+        '200':
+          description: Current crawl task status
+  /api/batches:
+    get:
+      summary: List crawl history batches
+      responses:
+        '200':
+          description: Batch list
+  /api/batches/{batchId}:
+    get:
+      summary: Get one batch with article details
+      parameters:
+        - in: path
+          name: batchId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Batch details
+  /api/batches/{batchId}/feishu-push:
+    post:
+      summary: Push current batch result to Feishu
+      parameters:
+        - in: path
+          name: batchId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Push completed
+        '400':
+          description: Webhook missing or batch invalid
+  /api/dashboard/summary:
+    get:
+      summary: Get dashboard summary metrics
+      responses:
+        '200':
+          description: Dashboard metrics
+  /api/articles/{articleId}/markdown:
+    get:
+      summary: Download single article as markdown
+      parameters:
+        - in: path
+          name: articleId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Markdown file download
+  /api/articles/markdown-export:
+    post:
+      summary: Export multiple articles as zip
+      responses:
+        '200':
+          description: Zip download
+  /api/settings:
+    get:
+      summary: Get persisted settings
+      responses:
+        '200':
+          description: Settings data
+    patch:
+      summary: Update persisted settings
+      responses:
+        '200':
+          description: Settings updated
+components:
+  schemas:
+    Account:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        fakeid:
+          type: string
+          nullable: true
+        isSelected:
+          type: boolean
+    CrawlBatch:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [waiting, running, completed, failed]
+        totalAccounts:
+          type: integer
+        completedAccounts:
+          type: integer
+        totalArticles:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+    Article:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        url:
+          type: string
+        digest:
+          type: string
+          nullable: true
+        summary:
+          type: string
+          nullable: true
+        content:
+          type: string
+          nullable: true
+        publishTime:
+          type: string
+          nullable: true
+    Settings:
+      type: object
+      properties:
+        feishuWebhook:
+          type: string
+          nullable: true
+        articleCount:
+          type: integer
+        requestInterval:
+          type: number
+        loginStatus:
+          type: string
+          enum: [logged_out, logging_in, logged_in, expired]

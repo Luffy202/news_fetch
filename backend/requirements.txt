@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pydantic
+sqlalchemy
+requests
+beautifulsoup4
+lxml
+playwright
+openai
