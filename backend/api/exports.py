@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -8,6 +10,11 @@ from backend.api.deps import get_db
 from backend.services.export_service import ExportService
 
 router = APIRouter(tags=['exports'])
+
+
+def build_content_disposition(filename: str, ascii_filename: str) -> str:
+    quoted_filename = quote(filename)
+    return f"attachment; filename=\"{ascii_filename}\"; filename*=UTF-8''{quoted_filename}"
 
 
 @router.get('/api/articles/{article_id}/markdown')
@@ -20,7 +27,7 @@ def download_article_markdown(article_id: int, db: Session = Depends(get_db)):
     return Response(
         content=content,
         media_type='text/markdown; charset=utf-8',
-        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        headers={'Content-Disposition': build_content_disposition(filename, 'export.md')},
     )
 
 
@@ -36,5 +43,5 @@ def download_batch_markdown_zip(batch_id: int, db: Session = Depends(get_db)):
     return Response(
         content=content,
         media_type='application/zip',
-        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        headers={'Content-Disposition': build_content_disposition(filename, 'export.zip')},
     )

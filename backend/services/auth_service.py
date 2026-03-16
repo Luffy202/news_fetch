@@ -22,6 +22,16 @@ class AuthService:
             'lastLoginAt': settings.last_login_at.isoformat() if settings.last_login_at else None,
         }
 
+    def restore_credentials(self) -> bool:
+        try:
+            credentials = get_credentials()
+            crawler_service.set_credentials(credentials['cookie'], credentials['token'])
+            return True
+        except (AuthError, ImportError) as exc:
+            self.settings_service.update_settings(login_status='logged_out')
+            logger.warning('恢复登录凭证失败: %s', exc)
+            return False
+
     def trigger_login(self) -> dict:
         logger.info('开始扫码登录流程')
         self.settings_service.update_settings(login_status='logging_in')

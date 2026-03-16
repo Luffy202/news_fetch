@@ -21,7 +21,7 @@ def fetch_article_content(url):
     try:
         resp = requests.get(url, headers=headers, timeout=15)
         resp.encoding = 'utf-8'
-        soup = BeautifulSoup(resp.text, 'lxml')
+        soup = BeautifulSoup(resp.text, 'html.parser')
 
         content_div = soup.find('div', id='js_content')
         if not content_div:

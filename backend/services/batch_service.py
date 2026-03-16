@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from backend.models.schema import Article
 from backend.storage.database import SessionLocal
 from backend.storage.repositories import AccountRepository, ArticleRepository, BatchRepository
+from backend.services.auth_service import AuthService
 from backend.services.crawler_service import crawler_service
 from backend.services.settings_service import SettingsService
 from backend.services.task_manager import task_manager
@@ -35,8 +36,11 @@ class BatchService:
             raise ValueError('请至少勾选一个公众号')
 
         settings = self.settings_service.get_settings()
+        if settings.login_status == 'logged_in' and not crawler_service.has_credentials():
+            if not AuthService(self.db).restore_credentials():
+                raise ValueError('登录状态已失效，请重新扫码登录')
         batch = self.batch_repository.create(
-            batch_no=datetime.utcnow().strftime('batch-%Y%m%d%H%M%S'),
+            batch_no=datetime.utcnow().strftime('batch-%Y%m%d%H%M%S%f'),
             selected_account_ids=[account.id for account in selected_accounts],
             total_accounts=len(selected_accounts),
         )
