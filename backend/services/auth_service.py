@@ -33,7 +33,7 @@ class AuthService:
             return False
 
     def trigger_login(self) -> dict:
-        logger.info('开始扫码登录流程')
+        logger.info('开始登录流程')
         self.settings_service.update_settings(login_status='logging_in')
         try:
             credentials = get_credentials()
@@ -45,7 +45,7 @@ class AuthService:
             logger.info('扫码登录成功')
         except (AuthError, ImportError) as exc:
             settings = self.settings_service.update_settings(login_status='logged_out')
-            logger.warning('扫码登录失败: %s', exc)
+            logger.warning('登录失败: %s', exc)
             raise ValueError(str(exc)) from exc
         return {
             'loginStatus': settings.login_status,

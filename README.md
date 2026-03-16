@@ -54,6 +54,114 @@ npm run dev
 
 默认访问：`http://localhost:5173`
 
+## 一键启动（Docker）
+
+适用于“拉代码后直接启动”的场景。
+
+### 1. 前置条件
+
+- 已安装 Docker 和 Docker Compose
+
+### 2. 一键启动
+
+macOS / Linux：
+
+```bash
+bash scripts/start.sh
+```
+
+Windows（PowerShell 或 CMD）：
+
+```bat
+scripts\start.bat
+```
+
+可直接双击根目录文件：
+
+- `启动项目.command`
+- `停止项目.command`
+- `启动项目.bat`
+- `停止项目.bat`
+
+启动后访问：
+
+- 前端：`http://localhost:8080`
+- 后端：`http://localhost:8000`
+- 后端健康检查：`http://localhost:8000/health`
+
+默认会自动打开浏览器访问前端；如需关闭自动打开：
+
+- macOS / Linux：`AUTO_OPEN_BROWSER=0 bash scripts/start.sh`
+- Windows：`set AUTO_OPEN_BROWSER=0 && scripts\start.bat`
+
+### 3. 停止服务
+
+macOS / Linux：
+
+```bash
+bash scripts/stop.sh
+```
+
+Windows：
+
+```bat
+scripts\stop.bat
+```
+
+### 4. 登录模式（推荐容器环境使用 env）
+
+- `AUTH_MODE=auto`：默认，优先读取环境变量凭证，不存在则尝试 Playwright 登录
+- `AUTH_MODE=env`：只使用 `WECHAT_COOKIE` 和 `WECHAT_TOKEN`
+- `AUTH_MODE=playwright`：只使用 Playwright 扫码登录
+
+容器环境推荐先设置凭证再启动：
+
+```bash
+export AUTH_MODE=env
+export WECHAT_COOKIE='你的cookie'
+export WECHAT_TOKEN='你的token'
+bash scripts/start.sh
+```
+
+Windows 对应写法：
+
+```bat
+set AUTH_MODE=env
+set WECHAT_COOKIE=你的cookie
+set WECHAT_TOKEN=你的token
+scripts\start.bat
+```
+
+`AUTH_MODE=playwright` 在容器里是否能显示扫码窗口取决于主机是否提供图形显示能力；普通 Docker Desktop 默认环境下通常不可用，推荐使用 `AUTH_MODE=env`。
+
+### 5. 数据持久化目录
+
+- `data/`：SQLite 数据库
+- `browser_data/`：登录态相关浏览器数据
+- `output/`：导出文件
+
+## 部署到 Vercel
+
+推荐将 `frontend/` 部署到 Vercel，后端 `backend/` 部署到支持长任务与持久化存储的平台（如自建服务器、云主机或容器平台）。
+
+### 1. 准备后端 API 地址
+
+- 先部署后端，并确保 `https://<your-backend-domain>/health` 可访问
+- 记录后端域名（不要带尾部 `/`），例如 `https://api.example.com`
+
+### 2. 在 Vercel 导入项目
+
+- 直接导入当前仓库
+- 本仓库已包含根目录 `vercel.json`，会自动使用 `frontend/` 进行构建并输出静态文件
+
+### 3. 配置前端环境变量
+
+在 Vercel 项目设置的 Environment Variables 添加：
+
+- `VITE_API_BASE_URL=https://api.example.com`
+
+前端会优先读取 `VITE_API_BASE_URL`；本地未配置时默认使用 `http://localhost:8000`。
+
 ## 说明
 
 - SQLite 数据默认保存在 `data/dashboard.db`

@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: news-fetch-backend
+    restart: unless-stopped
+    environment:
+      AUTH_MODE: ${AUTH_MODE:-auto}
+      WECHAT_COOKIE: ${WECHAT_COOKIE:-}
+      WECHAT_TOKEN: ${WECHAT_TOKEN:-}
+    volumes:
+      - ./data:/app/data
+      - ./browser_data:/app/browser_data
+      - ./output:/app/output
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+    container_name: news-fetch-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"

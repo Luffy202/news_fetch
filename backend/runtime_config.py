@@ -51,3 +51,4 @@ KIMI_API_KEY = os.getenv('KIMI_API_KEY', '').strip()
 KIMI_MODEL = os.getenv('KIMI_MODEL', DEFAULT_KIMI_MODEL).strip() or DEFAULT_KIMI_MODEL
 KIMI_REQUEST_INTERVAL = _get_env_float('KIMI_REQUEST_INTERVAL', DEFAULT_KIMI_REQUEST_INTERVAL)
 FEISHU_WEBHOOK = os.getenv('FEISHU_WEBHOOK', '').strip()
+AUTH_MODE = (os.getenv('AUTH_MODE', 'auto').strip() or 'auto').lower()
