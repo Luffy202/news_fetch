@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 from backend import runtime_config
@@ -32,7 +34,19 @@ def _get_credentials_from_env():
     return {'cookie': cookie, 'token': token}
 
 
-def _get_credentials_from_playwright():
+def _install_playwright_chromium():
+    command = [sys.executable, '-m', 'playwright', 'install', 'chromium']
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode == 0:
+        return True
+    if result.stdout.strip():
+        print(result.stdout.strip())
+    if result.stderr.strip():
+        print(result.stderr.strip())
+    return False
+
+
+def _get_credentials_from_playwright(auto_install_browser: bool = True):
     try:
         from playwright.sync_api import Error as PlaywrightError, TimeoutError as PwTimeout, sync_playwright
     except ModuleNotFoundError as exc:
@@ -85,7 +99,12 @@ def _get_credentials_from_playwright():
     except PlaywrightError as exc:
         message = str(exc)
         if 'Executable doesn\'t exist' in message:
-            raise AuthError('未安装 Playwright 浏览器，请先执行 `python -m playwright install chromium`') from exc
+            if auto_install_browser and _install_playwright_chromium():
+                return _get_credentials_from_playwright(auto_install_browser=False)
+            raise AuthError(
+                '未安装 Playwright 浏览器，请执行 `python -m playwright install chromium`；'
+                '若使用 Docker，请执行 `docker compose exec backend python -m playwright install chromium`'
+            ) from exc
         if 'Missing X server' in message or 'ozone_platform_x11' in message or 'No protocol specified' in message:
             raise AuthError('当前环境无法启动可视化浏览器，请改用环境变量凭证（WECHAT_COOKIE/WECHAT_TOKEN）') from exc
         raise AuthError(f'启动扫码浏览器失败：{message}') from exc
