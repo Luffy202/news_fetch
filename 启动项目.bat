@@ -6,10 +6,13 @@ echo Select login mode:
 echo 1^) auto (default, env first, fallback to Playwright)
 echo 2^) env (env only)
 echo 3^) playwright (QR login only)
-choice /C 123 /N /M "Enter 1/2/3, default is 1: "
-if errorlevel 3 (
+set "LOGIN_MODE="
+set /p LOGIN_MODE=Enter 1/2/3, default is 1: 
+set "LOGIN_MODE=%LOGIN_MODE: =%"
+if "%LOGIN_MODE%"=="" set "LOGIN_MODE=1"
+if "%LOGIN_MODE%"=="3" (
   set "AUTH_MODE=playwright"
-) else if errorlevel 2 (
+) else if "%LOGIN_MODE%"=="2" (
   set "AUTH_MODE=env"
   set /p WECHAT_COOKIE=Please enter WECHAT_COOKIE: 
   set /p WECHAT_TOKEN=Please enter WECHAT_TOKEN: 

@@ -66,12 +66,15 @@ if /I "%SKIP_LOCAL_PY_SETUP%"=="1" (
   exit /b 0
 )
 set "PYTHON_CMD="
-where py >nul 2>&1 && set "PYTHON_CMD=py -3"
+where py >nul 2>&1 && py -3 -V >nul 2>&1 && set "PYTHON_CMD=py -3"
 if "%PYTHON_CMD%"=="" (
-  where python >nul 2>&1 && set "PYTHON_CMD=python"
+  where python >nul 2>&1 && python -V >nul 2>&1 && set "PYTHON_CMD=python"
 )
 if "%PYTHON_CMD%"=="" (
-  echo Python not found. Skip local python setup.
+  where python3 >nul 2>&1 && python3 -V >nul 2>&1 && set "PYTHON_CMD=python3"
+)
+if "%PYTHON_CMD%"=="" (
+  echo Python command not found in PATH ^(checked: py -3, python, python3^). Skip local python setup.
   exit /b 0
 )
 %PYTHON_CMD% -c "import fastapi,uvicorn,sqlalchemy,requests,bs4,lxml,playwright; from playwright.sync_api import sync_playwright; p=sync_playwright().start(); import os,sys; path=p.chromium.executable_path; p.stop(); sys.exit(0 if os.path.exists(path) else 1)" >nul 2>&1
