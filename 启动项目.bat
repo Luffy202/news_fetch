@@ -2,6 +2,18 @@
 setlocal
 cd /d "%~dp0"
 
+echo Select backend run mode:
+echo 1^) docker ^(default, both frontend/backend in containers^)
+echo 2^) local ^(backend on host, frontend in container^)
+set "BACKEND_MODE="
+set /p BACKEND_MODE=Enter 1/2, default is 1: 
+set "BACKEND_MODE=%BACKEND_MODE: =%"
+if "%BACKEND_MODE%"=="2" (
+  set "BACKEND_RUN_MODE=local"
+) else (
+  set "BACKEND_RUN_MODE=docker"
+)
+
 echo Select login mode:
 echo 1^) auto (default, env first, fallback to Playwright)
 echo 2^) env (env only)

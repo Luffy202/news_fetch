@@ -4,13 +4,39 @@ cd /d "%~dp0\.."
 
 set "AUTH_MODE_VALUE=%AUTH_MODE%"
 if "%AUTH_MODE_VALUE%"=="" set "AUTH_MODE_VALUE=auto"
+set "BACKEND_RUN_MODE_VALUE=%BACKEND_RUN_MODE%"
+if "%BACKEND_RUN_MODE_VALUE%"=="" set "BACKEND_RUN_MODE_VALUE=docker"
 echo AUTH_MODE=%AUTH_MODE_VALUE%
+echo BACKEND_RUN_MODE=%BACKEND_RUN_MODE_VALUE%
 if /I "%AUTH_MODE_VALUE%"=="env" (
   if "%WECHAT_COOKIE%"=="" echo Hint: AUTH_MODE=env requires WECHAT_COOKIE
   if "%WECHAT_TOKEN%"=="" echo Hint: AUTH_MODE=env requires WECHAT_TOKEN
 )
 call :ensure_local_python_runtime
 if errorlevel 1 exit /b 1
+
+if /I "%BACKEND_RUN_MODE_VALUE%"=="local" (
+  call :start_local_backend
+  if errorlevel 1 exit /b 1
+  if not "%FRONTEND_NODE_IMAGE%"=="" if not "%FRONTEND_NGINX_IMAGE%"=="" (
+    call :try_start_frontend_local "%FRONTEND_NODE_IMAGE%" "%FRONTEND_NGINX_IMAGE%" "custom image"
+    if errorlevel 1 exit /b 1
+    goto :after_start
+  )
+  call :try_start_frontend_local "docker.1ms.run/library/node:20-alpine" "docker.1ms.run/library/nginx:1.27-alpine" "mirror 1"
+  if not errorlevel 1 goto :after_start
+  call :try_start_frontend_local "node:20-alpine" "nginx:1.27-alpine" "mirror 2"
+  if not errorlevel 1 goto :after_start
+  echo.
+  echo All configured image sources failed.
+  echo You can manually set images and retry:
+  echo set FRONTEND_NODE_IMAGE=your_available_node_image
+  echo set FRONTEND_NGINX_IMAGE=your_available_nginx_image
+  echo scripts\start.bat
+  exit /b 1
+)
+
+set "VITE_API_BASE_URL="
 
 if not "%FRONTEND_NODE_IMAGE%"=="" if not "%FRONTEND_NGINX_IMAGE%"=="" (
   call :try_start "%FRONTEND_NODE_IMAGE%" "%FRONTEND_NGINX_IMAGE%" "custom image"
@@ -54,6 +80,22 @@ echo Trying %~3
 echo FRONTEND_NODE_IMAGE=%FRONTEND_NODE_IMAGE%
 echo FRONTEND_NGINX_IMAGE=%FRONTEND_NGINX_IMAGE%
 docker compose up -d --build
+if errorlevel 1 (
+  echo Current image source failed. Retrying with next source...
+  exit /b 1
+)
+exit /b 0
+
+:try_start_frontend_local
+set "FRONTEND_NODE_IMAGE=%~1"
+set "FRONTEND_NGINX_IMAGE=%~2"
+set "VITE_API_BASE_URL=http://localhost:8000"
+echo.
+echo Trying %~3 ^(frontend with local backend^)
+echo FRONTEND_NODE_IMAGE=%FRONTEND_NODE_IMAGE%
+echo FRONTEND_NGINX_IMAGE=%FRONTEND_NGINX_IMAGE%
+echo VITE_API_BASE_URL=%VITE_API_BASE_URL%
+docker compose up -d --build --no-deps frontend
 if errorlevel 1 (
   echo Current image source failed. Retrying with next source...
   exit /b 1
@@ -125,6 +167,23 @@ if "%PLAYWRIGHT_DOWNLOAD_HOST%"=="" (
 )
 
 echo Local python runtime setup completed.
+exit /b 0
+
+:start_local_backend
+call :stop_local_backend
+if not exist output mkdir output
+set "AUTH_MODE=%AUTH_MODE_VALUE%"
+set "LOCAL_BACKEND_CMD=cd /d ""%cd%"" && %PYTHON_CMD% -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 >> output\local-backend.log 2>&1"
+start "news-fetch-local-backend" /min cmd /c "%LOCAL_BACKEND_CMD%"
+if errorlevel 1 (
+  echo Failed to start local backend process.
+  exit /b 1
+)
+echo Local backend started in separate process.
+exit /b 0
+
+:stop_local_backend
+taskkill /FI "WINDOWTITLE eq news-fetch-local-backend" /T /F >nul 2>&1
 exit /b 0
 
 :try_install_playwright_with_host

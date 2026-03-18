@@ -134,6 +134,29 @@ scripts\start.bat
 
 `AUTH_MODE=playwright` 在容器里是否能显示扫码窗口取决于主机是否提供图形显示能力；普通 Docker Desktop 默认环境下通常不可用，推荐使用 `AUTH_MODE=env`。
 
+### 4.1 后端运行模式
+
+- `BACKEND_RUN_MODE=docker`：默认，前后端都在容器中运行
+- `BACKEND_RUN_MODE=local`：后端在本机运行，前端仍在容器中运行（适合需要本机可视化扫码）
+
+macOS / Linux：
+
+```bash
+export BACKEND_RUN_MODE=local
+export AUTH_MODE=playwright
+bash scripts/start.sh
+```
+
+Windows：
+
+```bat
+set BACKEND_RUN_MODE=local
+set AUTH_MODE=playwright
+scripts\start.bat
+```
+
+`BACKEND_RUN_MODE=local` 会仅启动前端容器，并在本机启动后端进程；停止时执行 `scripts/stop.sh` 或 `scripts\stop.bat`。
+
 ### 5. 数据持久化目录
 
 - `data/`：SQLite 数据库
