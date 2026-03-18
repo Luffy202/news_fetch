@@ -137,7 +137,7 @@ scripts\start.bat
 ### 4.1 后端运行模式
 
 - `BACKEND_RUN_MODE=docker`：默认，前后端都在容器中运行
-- `BACKEND_RUN_MODE=local`：后端在本机运行，前端仍在容器中运行（适合需要本机可视化扫码）
+- `BACKEND_RUN_MODE=local`：后端在本机运行；Windows 下默认前端也本机运行（适合可视化扫码）
 
 macOS / Linux：
 
@@ -155,7 +155,7 @@ set AUTH_MODE=playwright
 scripts\start.bat
 ```
 
-`BACKEND_RUN_MODE=local` 会仅启动前端容器，并在本机启动后端进程；停止时执行 `scripts/stop.sh` 或 `scripts\stop.bat`。
+`BACKEND_RUN_MODE=local` 会在本机启动后端进程；Windows 默认同时本机启动前端（端口 8080），可通过 `set FRONTEND_RUN_MODE=docker` 强制前端容器模式。
 
 ### 5. 数据持久化目录
 

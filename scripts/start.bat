@@ -6,8 +6,18 @@ set "AUTH_MODE_VALUE=%AUTH_MODE%"
 if "%AUTH_MODE_VALUE%"=="" set "AUTH_MODE_VALUE=auto"
 set "BACKEND_RUN_MODE_VALUE=%BACKEND_RUN_MODE%"
 if "%BACKEND_RUN_MODE_VALUE%"=="" set "BACKEND_RUN_MODE_VALUE=docker"
+set "FRONTEND_RUN_MODE_VALUE=%FRONTEND_RUN_MODE%"
+if "%FRONTEND_RUN_MODE_VALUE%"=="" set "FRONTEND_RUN_MODE_VALUE=auto"
+if /I "%FRONTEND_RUN_MODE_VALUE%"=="auto" (
+  if /I "%BACKEND_RUN_MODE_VALUE%"=="local" (
+    set "FRONTEND_RUN_MODE_VALUE=local"
+  ) else (
+    set "FRONTEND_RUN_MODE_VALUE=docker"
+  )
+)
 echo AUTH_MODE=%AUTH_MODE_VALUE%
 echo BACKEND_RUN_MODE=%BACKEND_RUN_MODE_VALUE%
+echo FRONTEND_RUN_MODE=%FRONTEND_RUN_MODE_VALUE%
 if /I "%AUTH_MODE_VALUE%"=="env" (
   if "%WECHAT_COOKIE%"=="" echo Hint: AUTH_MODE=env requires WECHAT_COOKIE
   if "%WECHAT_TOKEN%"=="" echo Hint: AUTH_MODE=env requires WECHAT_TOKEN
@@ -16,8 +26,14 @@ call :ensure_local_python_runtime
 if errorlevel 1 exit /b 1
 
 if /I "%BACKEND_RUN_MODE_VALUE%"=="local" (
+  call :stop_backend_container
   call :start_local_backend
   if errorlevel 1 exit /b 1
+  if /I "%FRONTEND_RUN_MODE_VALUE%"=="local" (
+    call :start_local_frontend
+    if errorlevel 1 exit /b 1
+    goto :after_start
+  )
   if not "%FRONTEND_NODE_IMAGE%"=="" if not "%FRONTEND_NGINX_IMAGE%"=="" (
     call :try_start_frontend_local "%FRONTEND_NODE_IMAGE%" "%FRONTEND_NGINX_IMAGE%" "custom image"
     if errorlevel 1 exit /b 1
@@ -179,12 +195,68 @@ if errorlevel 1 (
   echo Failed to start local backend process.
   exit /b 1
 )
+call :wait_local_backend_ready
+if errorlevel 1 exit /b 1
 echo Local backend started in separate process.
+exit /b 0
+
+:stop_backend_container
+docker compose stop backend >nul 2>&1
+docker compose rm -f backend >nul 2>&1
 exit /b 0
 
 :stop_local_backend
 taskkill /FI "WINDOWTITLE eq news-fetch-local-backend" /T /F >nul 2>&1
 exit /b 0
+
+:start_local_frontend
+call :stop_local_frontend
+if not exist output mkdir output
+where npm >nul 2>&1
+if errorlevel 1 (
+  echo npm command not found in PATH. Please install Node.js 20+.
+  exit /b 1
+)
+if not exist frontend\node_modules (
+  echo Installing frontend dependencies...
+  call npm --prefix frontend install
+  if errorlevel 1 (
+    echo Failed to install frontend dependencies.
+    exit /b 1
+  )
+)
+set "LOCAL_FRONTEND_CMD=cd /d ""%cd%\frontend"" && set VITE_API_BASE_URL=http://localhost:8000&& npm run dev -- --host 0.0.0.0 --port 8080 >> ..\output\local-frontend.log 2>&1"
+start "news-fetch-local-frontend" /min cmd /c "%LOCAL_FRONTEND_CMD%"
+if errorlevel 1 (
+  echo Failed to start local frontend process.
+  exit /b 1
+)
+call :wait_local_frontend_ready
+if errorlevel 1 exit /b 1
+echo Local frontend started in separate process.
+exit /b 0
+
+:stop_local_frontend
+taskkill /FI "WINDOWTITLE eq news-fetch-local-frontend" /T /F >nul 2>&1
+exit /b 0
+
+:wait_local_backend_ready
+for /L %%I in (1,1,25) do (
+  %PYTHON_CMD% -c "import urllib.request,sys,json; d=json.loads(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read().decode('utf-8')); sys.exit(0 if d.get('status')=='ok' else 1)" >nul 2>&1
+  if not errorlevel 1 exit /b 0
+  timeout /t 1 /nobreak >nul
+)
+echo Local backend health check failed. Please check output\local-backend.log
+exit /b 1
+
+:wait_local_frontend_ready
+for /L %%I in (1,1,30) do (
+  %PYTHON_CMD% -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:8080', timeout=2); sys.exit(0)" >nul 2>&1
+  if not errorlevel 1 exit /b 0
+  timeout /t 1 /nobreak >nul
+)
+echo Local frontend health check failed. Please check output\local-frontend.log
+exit /b 1
 
 :try_install_playwright_with_host
 if "%~1"=="" (
