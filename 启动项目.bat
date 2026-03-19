@@ -2,37 +2,33 @@
 setlocal
 cd /d "%~dp0"
 
-echo Select backend run mode:
-echo 1^) docker ^(default, both frontend/backend in containers^)
-echo 2^) local ^(backend on host, frontend in container^)
-set "BACKEND_MODE="
-set /p BACKEND_MODE=Enter 1/2, default is 1: 
-set "BACKEND_MODE=%BACKEND_MODE: =%"
-if "%BACKEND_MODE%"=="2" (
-  set "BACKEND_RUN_MODE=local"
-) else (
-  set "BACKEND_RUN_MODE=docker"
+set "LOCKFILE=scripts\.start.lock"
+
+if exist "%LOCKFILE%" (
+  echo.
+  echo [提示] 启动脚本已在运行中，请勿重复启动。
+  echo 如果确认没有在运行，请手动删除 %LOCKFILE% 后重试。
+  echo.
+  pause
+  exit /b 1
 )
 
-echo Select login mode:
-echo 1^) auto (default, env first, fallback to Playwright)
-echo 2^) env (env only)
-echo 3^) playwright (QR login only)
-set "LOGIN_MODE="
-set /p LOGIN_MODE=Enter 1/2/3, default is 1: 
-set "LOGIN_MODE=%LOGIN_MODE: =%"
-if "%LOGIN_MODE%"=="" set "LOGIN_MODE=1"
-if "%LOGIN_MODE%"=="3" (
-  set "AUTH_MODE=playwright"
-) else if "%LOGIN_MODE%"=="2" (
-  set "AUTH_MODE=env"
-  set /p WECHAT_COOKIE=Please enter WECHAT_COOKIE: 
-  set /p WECHAT_TOKEN=Please enter WECHAT_TOKEN: 
-) else (
-  set "AUTH_MODE=auto"
-)
+echo.> "%LOCKFILE%"
+
+set "BACKEND_RUN_MODE=local"
+set "AUTH_MODE=playwright"
 
 call scripts\start.bat
+set "EXIT_CODE=%errorlevel%"
+
+del /f /q "%LOCKFILE%" >nul 2>&1
+
 echo.
-echo Startup finished. Press any key to close.
+if %EXIT_CODE% equ 0 (
+  echo 启动完成。关闭此窗口不影响后台服务运行。
+) else (
+  echo 启动过程中出现错误，请检查上方日志。
+)
+echo 按任意键关闭此窗口...
 pause >nul
+exit /b %EXIT_CODE%

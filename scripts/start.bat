@@ -212,7 +212,21 @@ if /I "%AUTH_MODE_VALUE%"=="auto" if not "%WECHAT_COOKIE%"=="" if not "%WECHAT_T
 exit /b 0
 
 :start_local_backend
-call :stop_local_backend
+call :check_service_status 8000 "news-fetch-local-backend" "后端"
+if "%SERVICE_STATUS%"=="healthy" (
+  echo 后端服务已在运行中，无需重复启动。
+  exit /b 0
+)
+if "%SERVICE_STATUS%"=="port_conflict" (
+  echo.
+  echo [错误] 端口 8000 已被其他程序占用，无法启动后端服务。
+  echo 请使用 netstat -ano ^| findstr :8000 查看占用进程，关闭后重试。
+  exit /b 1
+)
+if "%SERVICE_STATUS%"=="unhealthy" (
+  echo 后端服务异常，正在重启...
+  call :stop_local_backend
+)
 if not exist output mkdir output
 set "AUTH_MODE=%AUTH_MODE_VALUE%"
 set "LOCAL_BACKEND_CMD=cd /d ""%cd%"" && %PYTHON_CMD% -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 >> output\local-backend.log 2>&1"
@@ -236,7 +250,21 @@ taskkill /FI "WINDOWTITLE eq news-fetch-local-backend" /T /F >nul 2>&1
 exit /b 0
 
 :start_local_frontend
-call :stop_local_frontend
+call :check_service_status 8080 "news-fetch-local-frontend" "前端"
+if "%SERVICE_STATUS%"=="healthy" (
+  echo 前端服务已在运行中，无需重复启动。
+  exit /b 0
+)
+if "%SERVICE_STATUS%"=="port_conflict" (
+  echo.
+  echo [错误] 端口 8080 已被其他程序占用，无法启动前端服务。
+  echo 请使用 netstat -ano ^| findstr :8080 查看占用进程，关闭后重试。
+  exit /b 1
+)
+if "%SERVICE_STATUS%"=="unhealthy" (
+  echo 前端服务异常，正在重启...
+  call :stop_local_frontend
+)
 if not exist output mkdir output
 where npm >nul 2>&1
 if errorlevel 1 (
@@ -272,7 +300,7 @@ for /L %%I in (1,1,25) do (
   if not errorlevel 1 exit /b 0
   timeout /t 1 /nobreak >nul
 )
-echo Local backend health check failed. Please check output\local-backend.log
+echo [错误] 后端服务健康检查超时，请查看 output\local-backend.log 排查问题。
 exit /b 1
 
 :wait_local_frontend_ready
@@ -281,7 +309,7 @@ for /L %%I in (1,1,30) do (
   if not errorlevel 1 exit /b 0
   timeout /t 1 /nobreak >nul
 )
-echo Local frontend health check failed. Please check output\local-frontend.log
+echo [错误] 前端服务健康检查超时，请查看 output\local-frontend.log 排查问题。
 exit /b 1
 
 :try_install_playwright_with_host
@@ -301,6 +329,40 @@ if errorlevel 1 (
   echo Chromium install failed via %~2. Check %PLAYWRIGHT_INSTALL_LOG%
   exit /b 1
 )
+exit /b 0
+
+:check_service_status
+rem %~1 = port, %~2 = window title, %~3 = display name
+set "SERVICE_STATUS=not_running"
+set "_CS_PORT=%~1"
+set "_CS_TITLE=%~2"
+set "_CS_NAME=%~3"
+
+rem Step 1: Check if our process is running by window title
+tasklist /FI "WINDOWTITLE eq %_CS_TITLE%" 2>nul | findstr /I "cmd.exe" >nul 2>&1
+if not errorlevel 1 (
+  rem Our process exists, do health check
+  if "%_CS_PORT%"=="8000" (
+    %PYTHON_CMD% -c "import urllib.request,sys,json; d=json.loads(urllib.request.urlopen('http://127.0.0.1:%_CS_PORT%/health', timeout=2).read().decode('utf-8')); sys.exit(0 if d.get('status')=='ok' else 1)" >nul 2>&1
+  ) else (
+    %PYTHON_CMD% -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:%_CS_PORT%', timeout=2); sys.exit(0)" >nul 2>&1
+  )
+  if not errorlevel 1 (
+    set "SERVICE_STATUS=healthy"
+  ) else (
+    set "SERVICE_STATUS=unhealthy"
+  )
+  exit /b 0
+)
+
+rem Step 2: No our process, check if port is occupied by others
+netstat -ano | findstr "LISTENING" | findstr ":%_CS_PORT% " >nul 2>&1
+if not errorlevel 1 (
+  set "SERVICE_STATUS=port_conflict"
+  exit /b 0
+)
+
+set "SERVICE_STATUS=not_running"
 exit /b 0
 
 :open_browser
