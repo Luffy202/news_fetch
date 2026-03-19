@@ -152,6 +152,17 @@ if errorlevel 1 (
   exit /b 1
 )
 
+call :resolve_playwright_install_need
+if /I "%INSTALL_PLAYWRIGHT_BROWSER%"=="0" (
+  echo Skipping Playwright browser install ^(%PLAYWRIGHT_INSTALL_SKIP_REASON%^).
+  echo Local python runtime setup completed.
+  exit /b 0
+)
+if not exist output mkdir output
+set "PLAYWRIGHT_INSTALL_LOG=output\playwright-install.log"
+if exist "%PLAYWRIGHT_INSTALL_LOG%" del /q "%PLAYWRIGHT_INSTALL_LOG%" >nul 2>&1
+
+echo Playwright install log: %PLAYWRIGHT_INSTALL_LOG%
 if "%PLAYWRIGHT_DOWNLOAD_HOST%"=="" (
   call :try_install_playwright_with_host "https://npmmirror.com/mirrors/playwright" "mirror host"
   if errorlevel 1 (
@@ -159,7 +170,7 @@ if "%PLAYWRIGHT_DOWNLOAD_HOST%"=="" (
     if errorlevel 1 (
       call :try_install_playwright_with_host "" "official host"
       if errorlevel 1 (
-        echo Local python setup failed at playwright browser install
+        echo Local python setup failed at playwright browser install. Check %PLAYWRIGHT_INSTALL_LOG%
         exit /b 1
       )
     )
@@ -174,7 +185,7 @@ if "%PLAYWRIGHT_DOWNLOAD_HOST%"=="" (
       if errorlevel 1 (
         call :try_install_playwright_with_host "" "official host"
         if errorlevel 1 (
-          echo Local python setup failed at playwright browser install
+          echo Local python setup failed at playwright browser install. Check %PLAYWRIGHT_INSTALL_LOG%
           exit /b 1
         )
       )
@@ -183,6 +194,21 @@ if "%PLAYWRIGHT_DOWNLOAD_HOST%"=="" (
 )
 
 echo Local python runtime setup completed.
+exit /b 0
+
+:resolve_playwright_install_need
+set "INSTALL_PLAYWRIGHT_BROWSER=1"
+set "PLAYWRIGHT_INSTALL_SKIP_REASON=required for current auth mode"
+if /I "%AUTH_MODE_VALUE%"=="env" (
+  set "INSTALL_PLAYWRIGHT_BROWSER=0"
+  set "PLAYWRIGHT_INSTALL_SKIP_REASON=AUTH_MODE=env"
+  exit /b 0
+)
+if /I "%AUTH_MODE_VALUE%"=="auto" if not "%WECHAT_COOKIE%"=="" if not "%WECHAT_TOKEN%"=="" (
+  set "INSTALL_PLAYWRIGHT_BROWSER=0"
+  set "PLAYWRIGHT_INSTALL_SKIP_REASON=credentials already provided"
+  exit /b 0
+)
 exit /b 0
 
 :start_local_backend
@@ -259,6 +285,7 @@ echo Local frontend health check failed. Please check output\local-frontend.log
 exit /b 1
 
 :try_install_playwright_with_host
+if "%PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT%"=="" set "PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=120000"
 if "%~1"=="" (
   set "PLAYWRIGHT_DOWNLOAD_HOST="
   echo Installing Chromium via official host...
@@ -266,9 +293,12 @@ if "%~1"=="" (
   set "PLAYWRIGHT_DOWNLOAD_HOST=%~1"
   echo Installing Chromium via %~2: %PLAYWRIGHT_DOWNLOAD_HOST%
 )
-%PYTHON_CMD% -m playwright install chromium
+echo ===== [%date% %time%] Installing via %~2 =====>> "%PLAYWRIGHT_INSTALL_LOG%"
+if not "%PLAYWRIGHT_DOWNLOAD_HOST%"=="" echo PLAYWRIGHT_DOWNLOAD_HOST=%PLAYWRIGHT_DOWNLOAD_HOST%>> "%PLAYWRIGHT_INSTALL_LOG%"
+echo PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=%PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT%>> "%PLAYWRIGHT_INSTALL_LOG%"
+call %PYTHON_CMD% -m playwright install chromium >> "%PLAYWRIGHT_INSTALL_LOG%" 2>&1
 if errorlevel 1 (
-  echo Chromium install failed via %~2.
+  echo Chromium install failed via %~2. Check %PLAYWRIGHT_INSTALL_LOG%
   exit /b 1
 )
 exit /b 0
