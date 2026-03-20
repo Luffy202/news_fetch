@@ -1,6 +1,13 @@
 import { Download, Eye } from 'lucide-react'
 import type { Batch } from '../types/api'
 
+const statusTextMap: Record<Batch['status'], string> = {
+  waiting: '等待中',
+  running: '抓取中',
+  completed: '已完成',
+  failed: '失败',
+}
+
 type BatchHistoryTableProps = {
   batches: Batch[]
   selectedBatchId?: number
@@ -41,9 +48,15 @@ export default function BatchHistoryTable({ batches, selectedBatchId, onSelect, 
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      batch.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                      batch.status === 'completed'
+                        ? 'bg-green-100 text-green-700'
+                        : batch.status === 'running'
+                          ? 'bg-blue-100 text-blue-700'
+                          : batch.status === 'failed'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-gray-100 text-gray-700'
                     }`}>
-                      {batch.status}
+                      {statusTextMap[batch.status]}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-gray-600 whitespace-nowrap">

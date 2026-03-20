@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Save, Settings as SettingsIcon, MessageSquare, List, Clock } from 'lucide-react'
-import type { Settings } from '../types/api'
+import { Save, Settings as SettingsIcon, MessageSquare, List, Clock, Laptop2, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import type { Settings, BootstrapStatus } from '../types/api'
 
 type SettingsPageProps = {
   settings?: Settings
+  bootstrap?: BootstrapStatus
   onSave: (payload: Partial<Pick<Settings, 'feishuWebhook' | 'articleCount' | 'requestInterval'>>) => Promise<void> | void
 }
 
-export default function SettingsPage({ settings, onSave }: SettingsPageProps) {
+export default function SettingsPage({ settings, bootstrap, onSave }: SettingsPageProps) {
   const [feishuWebhook, setFeishuWebhook] = useState(settings?.feishuWebhook ?? '')
   const [articleCount, setArticleCount] = useState(settings?.articleCount ?? 10)
   const [requestInterval, setRequestInterval] = useState(settings?.requestInterval ?? 4)
@@ -48,14 +49,50 @@ export default function SettingsPage({ settings, onSave }: SettingsPageProps) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="mb-6">
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div>
         <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-2">
            <SettingsIcon className="w-6 h-6 text-blue-600" />
            系统设置
         </h2>
-        <p className="text-gray-500 text-sm">配置爬取参数和消息通知服务。</p>
+        <p className="text-gray-500 text-sm">查看当前环境状态，配置爬取参数和消息通知服务。</p>
       </div>
+
+      <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <Laptop2 className="w-5 h-5 text-gray-500" />
+          环境就绪状态
+        </h3>
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-2xl bg-gray-50 p-4">
+            <div className="space-y-2 text-sm text-gray-600">
+              <div>当前消息：{bootstrap?.message ?? '正在检查环境...'}</div>
+              <div>前端托管：{bootstrap?.frontendHosted ? '已由后端托管' : '尚未就绪'}</div>
+              <div>扫码能力：{bootstrap?.visualLoginMessage ?? '尚未检测'}</div>
+            </div>
+          </div>
+
+          {bootstrap?.blockingIssues?.length ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+              <div className="mb-2 flex items-center gap-2 font-medium">
+                <AlertTriangle className="h-4 w-4" />
+                当前有待处理项
+              </div>
+              <div className="space-y-1">
+                {bootstrap.blockingIssues.map((issue) => (
+                  <div key={issue}>- {issue}</div>
+                ))}
+                {bootstrap.lastStartupError && <div>- 最近启动错误：{bootstrap.lastStartupError}</div>}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-700 flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5" />
+              启动链路已就绪，各项配置正常。
+            </div>
+          )}
+        </div>
+      </section>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 space-y-6">
         <div className="space-y-4">

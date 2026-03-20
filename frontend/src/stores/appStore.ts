@@ -1,11 +1,12 @@
 import { createAccount, deleteAccount, listAccounts, updateAccount } from '../services/accounts'
+import { getBootstrapStatus } from '../services/app'
 import { getBatchDetail, listBatches } from '../services/batches'
 import { getAuthStatus, getCurrentTask, startCrawl, triggerLogin } from '../services/crawl'
 import { pushBatchToFeishu } from '../services/feishu'
 import { getDashboardSummary } from '../services/dashboard'
-import { downloadArticleMarkdown, downloadBatchZip } from '../services/exports'
+import { downloadArticleDocx, downloadArticleMarkdown, downloadBatchZip } from '../services/exports'
 import { getSettings, updateSettings } from '../services/settings'
-import type { Account, Batch, BatchDetail, DashboardSummary, Settings, TaskStatus } from '../types/api'
+import type { Account, AuthStatus, Batch, BatchDetail, BootstrapStatus, DashboardSummary, Settings, TaskStatus } from '../types/api'
 
 export type AppState = {
   accounts: Account[]
@@ -41,11 +42,11 @@ export async function deleteAccountAction(account: Account): Promise<void> {
   await deleteAccount(account.id)
 }
 
-export async function loadAuthStatus(): Promise<Pick<Settings, 'loginStatus' | 'lastLoginAt'>> {
+export async function loadAuthStatus(): Promise<AuthStatus> {
   return getAuthStatus()
 }
 
-export async function triggerLoginAction(): Promise<Pick<Settings, 'loginStatus' | 'lastLoginAt'>> {
+export async function triggerLoginAction(): Promise<AuthStatus> {
   return triggerLogin()
 }
 
@@ -81,10 +82,18 @@ export async function loadDashboardSummary(): Promise<DashboardSummary> {
   return getDashboardSummary()
 }
 
+export async function loadBootstrapStatus(): Promise<BootstrapStatus> {
+  return getBootstrapStatus()
+}
+
 export async function exportArticleMarkdown(articleId: number): Promise<void> {
   await downloadArticleMarkdown(articleId)
 }
 
 export async function exportBatchMarkdownZip(batchId: number): Promise<void> {
   await downloadBatchZip(batchId)
+}
+
+export async function exportArticleDocx(articleId: number): Promise<void> {
+  await downloadArticleDocx(articleId)
 }

@@ -16,7 +16,7 @@ if exist "%LOCKFILE%" (
 echo.> "%LOCKFILE%"
 
 set "BACKEND_RUN_MODE=local"
-set "AUTH_MODE=playwright"
+set "AUTH_MODE=auto"
 
 call scripts\start.bat
 set "EXIT_CODE=%errorlevel%"

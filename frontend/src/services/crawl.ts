@@ -1,12 +1,12 @@
 import { request } from './http'
-import type { Settings, TaskStatus } from '../types/api'
+import type { AuthStatus, TaskStatus } from '../types/api'
 
 export function getAuthStatus() {
-  return request<Pick<Settings, 'loginStatus' | 'lastLoginAt'>>('/api/auth/status')
+  return request<AuthStatus>('/api/auth/status')
 }
 
 export function triggerLogin() {
-  return request<Pick<Settings, 'loginStatus' | 'lastLoginAt'>>('/api/auth/login', {
+  return request<AuthStatus>('/api/auth/login', {
     method: 'POST',
   })
 }

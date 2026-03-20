@@ -1,128 +1,65 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 cd /d "%~dp0\.."
 
 set "AUTH_MODE_VALUE=%AUTH_MODE%"
 if "%AUTH_MODE_VALUE%"=="" set "AUTH_MODE_VALUE=auto"
 set "BACKEND_RUN_MODE_VALUE=%BACKEND_RUN_MODE%"
-if "%BACKEND_RUN_MODE_VALUE%"=="" set "BACKEND_RUN_MODE_VALUE=docker"
-set "FRONTEND_RUN_MODE_VALUE=%FRONTEND_RUN_MODE%"
-if "%FRONTEND_RUN_MODE_VALUE%"=="" set "FRONTEND_RUN_MODE_VALUE=auto"
-if /I "%FRONTEND_RUN_MODE_VALUE%"=="auto" (
-  if /I "%BACKEND_RUN_MODE_VALUE%"=="local" (
-    set "FRONTEND_RUN_MODE_VALUE=local"
-  ) else (
-    set "FRONTEND_RUN_MODE_VALUE=docker"
-  )
-)
+if "%BACKEND_RUN_MODE_VALUE%"=="" set "BACKEND_RUN_MODE_VALUE=local"
+set "STARTUP_ERROR_LOG=output\startup-error.log"
+set "LOCAL_BACKEND_LOG=output\local-backend.log"
+
 echo AUTH_MODE=%AUTH_MODE_VALUE%
 echo BACKEND_RUN_MODE=%BACKEND_RUN_MODE_VALUE%
-echo FRONTEND_RUN_MODE=%FRONTEND_RUN_MODE_VALUE%
-if /I "%AUTH_MODE_VALUE%"=="env" (
-  if "%WECHAT_COOKIE%"=="" echo Hint: AUTH_MODE=env requires WECHAT_COOKIE
-  if "%WECHAT_TOKEN%"=="" echo Hint: AUTH_MODE=env requires WECHAT_TOKEN
-)
+
+if /I "%BACKEND_RUN_MODE_VALUE%"=="docker" goto :start_docker
+
 call :ensure_local_python_runtime
 if errorlevel 1 exit /b 1
 
-if /I "%BACKEND_RUN_MODE_VALUE%"=="local" (
-  call :stop_backend_container
-  call :start_local_backend
-  if errorlevel 1 exit /b 1
-  if /I "%FRONTEND_RUN_MODE_VALUE%"=="local" (
-    call :start_local_frontend
-    if errorlevel 1 exit /b 1
-    goto :after_start
-  )
-  if not "%FRONTEND_NODE_IMAGE%"=="" if not "%FRONTEND_NGINX_IMAGE%"=="" (
-    call :try_start_frontend_local "%FRONTEND_NODE_IMAGE%" "%FRONTEND_NGINX_IMAGE%" "custom image"
-    if errorlevel 1 exit /b 1
-    goto :after_start
-  )
-  call :try_start_frontend_local "docker.1ms.run/library/node:20-alpine" "docker.1ms.run/library/nginx:1.27-alpine" "mirror 1"
-  if not errorlevel 1 goto :after_start
-  call :try_start_frontend_local "node:20-alpine" "nginx:1.27-alpine" "mirror 2"
-  if not errorlevel 1 goto :after_start
-  echo.
-  echo All configured image sources failed.
-  echo You can manually set images and retry:
-  echo set FRONTEND_NODE_IMAGE=your_available_node_image
-  echo set FRONTEND_NGINX_IMAGE=your_available_nginx_image
-  echo scripts\start.bat
-  exit /b 1
-)
-
-set "VITE_API_BASE_URL="
-
-if not "%FRONTEND_NODE_IMAGE%"=="" if not "%FRONTEND_NGINX_IMAGE%"=="" (
-  call :try_start "%FRONTEND_NODE_IMAGE%" "%FRONTEND_NGINX_IMAGE%" "custom image"
-  if errorlevel 1 exit /b 1
-  goto :after_start
-)
-
-call :try_start "docker.1ms.run/library/node:20-alpine" "docker.1ms.run/library/nginx:1.27-alpine" "mirror 1"
-if not errorlevel 1 goto :after_start
-call :try_start "node:20-alpine" "nginx:1.27-alpine" "mirror 2"
-if not errorlevel 1 goto :after_start
-
-echo.
-echo All configured image sources failed.
-echo You can manually set images and retry:
-echo set FRONTEND_NODE_IMAGE=your_available_node_image
-echo set FRONTEND_NGINX_IMAGE=your_available_nginx_image
-echo scripts\start.bat
-exit /b 1
-
-:after_start
-docker compose ps
+call :ensure_frontend_dist
 if errorlevel 1 exit /b 1
 
-echo Frontend: http://localhost:8080
-echo Backend:  http://localhost:8000
-
-if "%AUTO_OPEN_BROWSER%"=="" set "AUTO_OPEN_BROWSER=1"
-if /I "%AUTO_OPEN_BROWSER%"=="0" (
-  echo AUTO_OPEN_BROWSER=0, skip opening browser.
-) else (
-  call :open_browser "http://localhost:8080"
+call :check_backend_healthy
+if /I "!SERVICE_STATUS!"=="healthy" (
+  call :clear_startup_error
+  echo 本地服务已在运行，直接打开工作台。
+  echo Frontend: http://localhost:8000
+  echo Backend:  http://localhost:8000
+  call :open_browser "http://localhost:8000"
+  exit /b 0
 )
+
+if /I "!SERVICE_STATUS!"=="port_conflict" (
+  call :write_startup_error "端口 8000 已被其他程序占用，请先释放后重试。"
+  echo 端口 8000 已被其他程序占用，请先释放后重试。
+  exit /b 1
+)
+
+call :clear_startup_error
+call :stop_local_backend
+call :start_local_backend
+if errorlevel 1 exit /b 1
+
+echo Frontend: http://localhost:8000
+echo Backend:  http://localhost:8000
+call :open_browser "http://localhost:8000"
 exit /b 0
 
-:try_start
-set "FRONTEND_NODE_IMAGE=%~1"
-set "FRONTEND_NGINX_IMAGE=%~2"
-echo.
-echo Trying %~3
-echo FRONTEND_NODE_IMAGE=%FRONTEND_NODE_IMAGE%
-echo FRONTEND_NGINX_IMAGE=%FRONTEND_NGINX_IMAGE%
+:start_docker
+call :clear_startup_error
 docker compose up -d --build
 if errorlevel 1 (
-  echo Current image source failed. Retrying with next source...
+  call :write_startup_error "Docker 启动失败，请检查 Docker Desktop 或 compose 日志。"
+  echo Docker 启动失败，请检查 Docker Desktop 或 compose 日志。
   exit /b 1
 )
-exit /b 0
-
-:try_start_frontend_local
-set "FRONTEND_NODE_IMAGE=%~1"
-set "FRONTEND_NGINX_IMAGE=%~2"
-set "VITE_API_BASE_URL=http://localhost:8000"
-echo.
-echo Trying %~3 ^(frontend with local backend^)
-echo FRONTEND_NODE_IMAGE=%FRONTEND_NODE_IMAGE%
-echo FRONTEND_NGINX_IMAGE=%FRONTEND_NGINX_IMAGE%
-echo VITE_API_BASE_URL=%VITE_API_BASE_URL%
-docker compose up -d --build --no-deps frontend
-if errorlevel 1 (
-  echo Current image source failed. Retrying with next source...
-  exit /b 1
-)
+echo Frontend: http://localhost:8080
+echo Backend:  http://localhost:8000
+call :open_browser "http://localhost:8080"
 exit /b 0
 
 :ensure_local_python_runtime
-if /I "%SKIP_LOCAL_PY_SETUP%"=="1" (
-  echo SKIP_LOCAL_PY_SETUP=1, skip local python setup.
-  exit /b 0
-)
 set "PYTHON_CMD="
 where py >nul 2>&1 && py -3 -V >nul 2>&1 && set "PYTHON_CMD=py -3"
 if "%PYTHON_CMD%"=="" (
@@ -132,243 +69,117 @@ if "%PYTHON_CMD%"=="" (
   where python3 >nul 2>&1 && python3 -V >nul 2>&1 && set "PYTHON_CMD=python3"
 )
 if "%PYTHON_CMD%"=="" (
-  echo Python command not found in PATH ^(checked: py -3, python, python3^). Skip local python setup.
-  exit /b 0
+  call :write_startup_error "未找到可用的 Python 命令（py -3 / python / python3）。"
+  echo 未找到可用的 Python 命令（py -3 / python / python3）。
+  exit /b 1
 )
-%PYTHON_CMD% -c "import fastapi,uvicorn,sqlalchemy,requests,bs4,lxml,playwright; from playwright.sync_api import sync_playwright; p=sync_playwright().start(); import os,sys; path=p.chromium.executable_path; p.stop(); sys.exit(0 if os.path.exists(path) else 1)" >nul 2>&1
+
+%PYTHON_CMD% -c "import fastapi,uvicorn,sqlalchemy,requests,bs4,lxml,playwright" >nul 2>&1
+if errorlevel 1 (
+  echo 正在安装 Python 依赖...
+  %PYTHON_CMD% -m pip install -r requirements.txt
+  if errorlevel 1 exit /b 1
+  %PYTHON_CMD% -m pip install -r backend\requirements.txt
+  if errorlevel 1 exit /b 1
+)
+
+call :needs_playwright_browser
+if /I "!NEEDS_PLAYWRIGHT!"=="1" (
+  %PYTHON_CMD% -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); import os,sys; path=p.chromium.executable_path; p.stop(); sys.exit(0 if os.path.exists(path) else 1)" >nul 2>&1
+  if errorlevel 1 (
+    echo 正在安装 Playwright Chromium...
+    %PYTHON_CMD% -m playwright install chromium
+    if errorlevel 1 exit /b 1
+  )
+)
+exit /b 0
+
+:needs_playwright_browser
+set "NEEDS_PLAYWRIGHT=1"
+if /I "%AUTH_MODE_VALUE%"=="env" set "NEEDS_PLAYWRIGHT=0"
+if /I "%AUTH_MODE_VALUE%"=="auto" if not "%WECHAT_COOKIE%"=="" if not "%WECHAT_TOKEN%"=="" set "NEEDS_PLAYWRIGHT=0"
+exit /b 0
+
+:ensure_frontend_dist
+if /I "%SKIP_FRONTEND_BUILD%"=="1" exit /b 0
+if exist "frontend\dist\index.html" exit /b 0
+
+where npm >nul 2>&1
+if errorlevel 1 (
+  call :write_startup_error "未检测到 npm，无法构建前端页面。请先安装 Node.js。"
+  echo 未检测到 npm，无法构建前端页面。请先安装 Node.js。
+  exit /b 1
+)
+
+if not exist "frontend\node_modules" (
+  echo 正在安装前端依赖...
+  pushd frontend
+  npm install
+  if errorlevel 1 (
+    popd
+    exit /b 1
+  )
+  popd
+)
+
+echo 正在构建前端静态资源...
+pushd frontend
+npm run build
+if errorlevel 1 (
+  popd
+  exit /b 1
+)
+popd
+exit /b 0
+
+:check_backend_healthy
+set "SERVICE_STATUS=stopped"
+%PYTHON_CMD% -c "import sys,urllib.request; import json; response=urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2); sys.exit(0 if response.status == 200 else 1)" >nul 2>&1
 if not errorlevel 1 (
-  echo Local python runtime already ready.
+  set "SERVICE_STATUS=healthy"
   exit /b 0
 )
-echo Installing local python dependencies...
-%PYTHON_CMD% -m pip install -r requirements.txt
-if errorlevel 1 (
-  echo Local python setup failed at requirements.txt
-  exit /b 1
-)
-%PYTHON_CMD% -m pip install -r backend\requirements.txt
-if errorlevel 1 (
-  echo Local python setup failed at backend/requirements.txt
-  exit /b 1
-)
-
-call :resolve_playwright_install_need
-if /I "%INSTALL_PLAYWRIGHT_BROWSER%"=="0" (
-  echo Skipping Playwright browser install ^(%PLAYWRIGHT_INSTALL_SKIP_REASON%^).
-  echo Local python runtime setup completed.
-  exit /b 0
-)
-if not exist output mkdir output
-set "PLAYWRIGHT_INSTALL_LOG=output\playwright-install.log"
-if exist "%PLAYWRIGHT_INSTALL_LOG%" del /q "%PLAYWRIGHT_INSTALL_LOG%" >nul 2>&1
-
-echo Playwright install log: %PLAYWRIGHT_INSTALL_LOG%
-if "%PLAYWRIGHT_DOWNLOAD_HOST%"=="" (
-  call :try_install_playwright_with_host "https://npmmirror.com/mirrors/playwright" "mirror host"
-  if errorlevel 1 (
-    call :try_install_playwright_with_host "https://registry.npmmirror.com/-/binary/playwright" "mirror host backup"
-    if errorlevel 1 (
-      call :try_install_playwright_with_host "" "official host"
-      if errorlevel 1 (
-        echo Local python setup failed at playwright browser install. Check %PLAYWRIGHT_INSTALL_LOG%
-        exit /b 1
-      )
-    )
-  )
-) else (
-  call :try_install_playwright_with_host "%PLAYWRIGHT_DOWNLOAD_HOST%" "custom host"
-  if errorlevel 1 (
-    echo Custom PLAYWRIGHT_DOWNLOAD_HOST failed. Fallback to mirror host...
-    call :try_install_playwright_with_host "https://npmmirror.com/mirrors/playwright" "mirror host"
-    if errorlevel 1 (
-      call :try_install_playwright_with_host "https://registry.npmmirror.com/-/binary/playwright" "mirror host backup"
-      if errorlevel 1 (
-        call :try_install_playwright_with_host "" "official host"
-        if errorlevel 1 (
-          echo Local python setup failed at playwright browser install. Check %PLAYWRIGHT_INSTALL_LOG%
-          exit /b 1
-        )
-      )
-    )
-  )
-)
-
-echo Local python runtime setup completed.
-exit /b 0
-
-:resolve_playwright_install_need
-set "INSTALL_PLAYWRIGHT_BROWSER=1"
-set "PLAYWRIGHT_INSTALL_SKIP_REASON=required for current auth mode"
-if /I "%AUTH_MODE_VALUE%"=="env" (
-  set "INSTALL_PLAYWRIGHT_BROWSER=0"
-  set "PLAYWRIGHT_INSTALL_SKIP_REASON=AUTH_MODE=env"
-  exit /b 0
-)
-if /I "%AUTH_MODE_VALUE%"=="auto" if not "%WECHAT_COOKIE%"=="" if not "%WECHAT_TOKEN%"=="" (
-  set "INSTALL_PLAYWRIGHT_BROWSER=0"
-  set "PLAYWRIGHT_INSTALL_SKIP_REASON=credentials already provided"
-  exit /b 0
-)
-exit /b 0
-
-:start_local_backend
-call :check_service_status 8000 "news-fetch-local-backend" "后端"
-if "%SERVICE_STATUS%"=="healthy" (
-  echo 后端服务已在运行中，无需重复启动。
-  exit /b 0
-)
-if "%SERVICE_STATUS%"=="port_conflict" (
-  echo.
-  echo [错误] 端口 8000 已被其他程序占用，无法启动后端服务。
-  echo 请使用 netstat -ano ^| findstr :8000 查看占用进程，关闭后重试。
-  exit /b 1
-)
-if "%SERVICE_STATUS%"=="unhealthy" (
-  echo 后端服务异常，正在重启...
-  call :stop_local_backend
-)
-if not exist output mkdir output
-set "AUTH_MODE=%AUTH_MODE_VALUE%"
-set "LOCAL_BACKEND_CMD=cd /d ""%cd%"" && %PYTHON_CMD% -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 >> output\local-backend.log 2>&1"
-start "news-fetch-local-backend" /min cmd /c "%LOCAL_BACKEND_CMD%"
-if errorlevel 1 (
-  echo Failed to start local backend process.
-  exit /b 1
-)
-call :wait_local_backend_ready
-if errorlevel 1 exit /b 1
-echo Local backend started in separate process.
-exit /b 0
-
-:stop_backend_container
-docker compose stop backend >nul 2>&1
-docker compose rm -f backend >nul 2>&1
+netstat -ano | findstr /R /C:":8000 .*LISTENING" >nul 2>&1
+if not errorlevel 1 set "SERVICE_STATUS=port_conflict"
 exit /b 0
 
 :stop_local_backend
 taskkill /FI "WINDOWTITLE eq news-fetch-local-backend" /T /F >nul 2>&1
+del /f /q ".local_backend.pid" >nul 2>&1
 exit /b 0
 
-:start_local_frontend
-call :check_service_status 8080 "news-fetch-local-frontend" "前端"
-if "%SERVICE_STATUS%"=="healthy" (
-  echo 前端服务已在运行中，无需重复启动。
-  exit /b 0
-)
-if "%SERVICE_STATUS%"=="port_conflict" (
-  echo.
-  echo [错误] 端口 8080 已被其他程序占用，无法启动前端服务。
-  echo 请使用 netstat -ano ^| findstr :8080 查看占用进程，关闭后重试。
-  exit /b 1
-)
-if "%SERVICE_STATUS%"=="unhealthy" (
-  echo 前端服务异常，正在重启...
-  call :stop_local_frontend
-)
+:start_local_backend
 if not exist output mkdir output
-where npm >nul 2>&1
+set "LOCAL_BACKEND_CMD=cd /d ""%cd%"" && set AUTH_MODE=%AUTH_MODE_VALUE% && set BACKEND_RUN_MODE=local && set WECHAT_COOKIE=%WECHAT_COOKIE% && set WECHAT_TOKEN=%WECHAT_TOKEN% && set KIMI_API_KEY=%KIMI_API_KEY% && set FEISHU_WEBHOOK=%FEISHU_WEBHOOK% && %PYTHON_CMD% -m uvicorn backend.app:app --host 0.0.0.0 --port 8000 >> output\local-backend.log 2>&1"
+start "news-fetch-local-backend" /min cmd /c "%LOCAL_BACKEND_CMD%"
 if errorlevel 1 (
-  echo npm command not found in PATH. Please install Node.js 20+.
+  call :write_startup_error "本地后端启动失败。"
+  echo 本地后端启动失败。
   exit /b 1
 )
-if not exist frontend\node_modules (
-  echo Installing frontend dependencies...
-  call npm --prefix frontend install
-  if errorlevel 1 (
-    echo Failed to install frontend dependencies.
-    exit /b 1
-  )
-)
-set "LOCAL_FRONTEND_CMD=cd /d ""%cd%\frontend"" && set VITE_API_BASE_URL=http://localhost:8000&& npm run dev -- --host 0.0.0.0 --port 8080 >> ..\output\local-frontend.log 2>&1"
-start "news-fetch-local-frontend" /min cmd /c "%LOCAL_FRONTEND_CMD%"
-if errorlevel 1 (
-  echo Failed to start local frontend process.
-  exit /b 1
-)
-call :wait_local_frontend_ready
-if errorlevel 1 exit /b 1
-echo Local frontend started in separate process.
-exit /b 0
 
-:stop_local_frontend
-taskkill /FI "WINDOWTITLE eq news-fetch-local-frontend" /T /F >nul 2>&1
-exit /b 0
-
-:wait_local_backend_ready
-for /L %%I in (1,1,25) do (
-  %PYTHON_CMD% -c "import urllib.request,sys,json; d=json.loads(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read().decode('utf-8')); sys.exit(0 if d.get('status')=='ok' else 1)" >nul 2>&1
-  if not errorlevel 1 exit /b 0
-  timeout /t 1 /nobreak >nul
+for /L %%I in (1,1,60) do (
+  timeout /t 1 >nul
+  call :check_backend_healthy
+  if /I "!SERVICE_STATUS!"=="healthy" exit /b 0
 )
-echo [错误] 后端服务健康检查超时，请查看 output\local-backend.log 排查问题。
+
+call :write_startup_error "本地后端启动失败，请查看 output\local-backend.log。"
+echo 本地后端启动失败，请查看 output\local-backend.log。
 exit /b 1
 
-:wait_local_frontend_ready
-for /L %%I in (1,1,30) do (
-  %PYTHON_CMD% -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:8080', timeout=2); sys.exit(0)" >nul 2>&1
-  if not errorlevel 1 exit /b 0
-  timeout /t 1 /nobreak >nul
-)
-echo [错误] 前端服务健康检查超时，请查看 output\local-frontend.log 排查问题。
-exit /b 1
-
-:try_install_playwright_with_host
-if "%PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT%"=="" set "PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=120000"
-if "%~1"=="" (
-  set "PLAYWRIGHT_DOWNLOAD_HOST="
-  echo Installing Chromium via official host...
-) else (
-  set "PLAYWRIGHT_DOWNLOAD_HOST=%~1"
-  echo Installing Chromium via %~2: %PLAYWRIGHT_DOWNLOAD_HOST%
-)
-echo ===== [%date% %time%] Installing via %~2 =====>> "%PLAYWRIGHT_INSTALL_LOG%"
-if not "%PLAYWRIGHT_DOWNLOAD_HOST%"=="" echo PLAYWRIGHT_DOWNLOAD_HOST=%PLAYWRIGHT_DOWNLOAD_HOST%>> "%PLAYWRIGHT_INSTALL_LOG%"
-echo PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=%PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT%>> "%PLAYWRIGHT_INSTALL_LOG%"
-call %PYTHON_CMD% -m playwright install chromium >> "%PLAYWRIGHT_INSTALL_LOG%" 2>&1
-if errorlevel 1 (
-  echo Chromium install failed via %~2. Check %PLAYWRIGHT_INSTALL_LOG%
-  exit /b 1
-)
+:write_startup_error
+if not exist output mkdir output
+> "%STARTUP_ERROR_LOG%" echo %~1
 exit /b 0
 
-:check_service_status
-rem %~1 = port, %~2 = window title, %~3 = display name
-set "SERVICE_STATUS=not_running"
-set "_CS_PORT=%~1"
-set "_CS_TITLE=%~2"
-set "_CS_NAME=%~3"
-
-rem Step 1: Check if our process is running by window title
-tasklist /FI "WINDOWTITLE eq %_CS_TITLE%" 2>nul | findstr /I "cmd.exe" >nul 2>&1
-if not errorlevel 1 (
-  rem Our process exists, do health check
-  if "%_CS_PORT%"=="8000" (
-    %PYTHON_CMD% -c "import urllib.request,sys,json; d=json.loads(urllib.request.urlopen('http://127.0.0.1:%_CS_PORT%/health', timeout=2).read().decode('utf-8')); sys.exit(0 if d.get('status')=='ok' else 1)" >nul 2>&1
-  ) else (
-    %PYTHON_CMD% -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:%_CS_PORT%', timeout=2); sys.exit(0)" >nul 2>&1
-  )
-  if not errorlevel 1 (
-    set "SERVICE_STATUS=healthy"
-  ) else (
-    set "SERVICE_STATUS=unhealthy"
-  )
-  exit /b 0
-)
-
-rem Step 2: No our process, check if port is occupied by others
-netstat -ano | findstr "LISTENING" | findstr ":%_CS_PORT% " >nul 2>&1
-if not errorlevel 1 (
-  set "SERVICE_STATUS=port_conflict"
-  exit /b 0
-)
-
-set "SERVICE_STATUS=not_running"
+:clear_startup_error
+if not exist output mkdir output
+del /f /q "%STARTUP_ERROR_LOG%" >nul 2>&1
 exit /b 0
 
 :open_browser
-echo Opening browser: %~1
-start "" "%~1"
-if errorlevel 1 (
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process '%~1'" >nul 2>&1
-)
+if "%AUTO_OPEN_BROWSER%"=="" set "AUTO_OPEN_BROWSER=1"
+if /I "%AUTO_OPEN_BROWSER%"=="0" exit /b 0
+start "" %~1
 exit /b 0

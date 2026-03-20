@@ -9,11 +9,14 @@ from backend.storage.repositories import SettingsRepository
 
 
 def serialize_settings(settings) -> dict:
+    login_status = settings.login_status
+    if login_status == 'logging_in':
+        login_status = 'launching_browser'
     return {
         'feishuWebhook': settings.feishu_webhook,
         'articleCount': settings.article_count,
         'requestInterval': settings.request_interval,
-        'loginStatus': settings.login_status,
+        'loginStatus': login_status,
         'lastLoginAt': settings.last_login_at.isoformat() if settings.last_login_at else None,
     }
 

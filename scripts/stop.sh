@@ -10,3 +10,5 @@ if [[ -f ".local_backend.pid" ]]; then
   fi
   rm -f .local_backend.pid
 fi
+
+pkill -f "uvicorn backend.app:app" >/dev/null 2>&1 || true

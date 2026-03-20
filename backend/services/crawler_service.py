@@ -29,11 +29,14 @@ class CrawlerService:
     def has_credentials(self) -> bool:
         return bool(self._cookie and self._token)
 
-    def crawl_accounts(self, account_names: Iterable[str], article_count: int):
+    def crawl_accounts(self, account_names: Iterable[str], article_count: int, progress_callback=None):
         if not self.has_credentials():
             raise ValueError('请先完成扫码登录')
         results = []
-        for name in account_names:
+        account_names = list(account_names)
+        for index, name in enumerate(account_names):
+            if progress_callback is not None:
+                progress_callback(name, account_names[index + 1:])
             logger.info('开始抓取公众号: %s', name)
             account_data = fetch_account_articles(name, article_count)
             if not account_data:

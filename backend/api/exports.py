@@ -31,6 +31,20 @@ def download_article_markdown(article_id: int, db: Session = Depends(get_db)):
     )
 
 
+@router.get('/api/articles/{article_id}/docx')
+def download_article_docx(article_id: int, db: Session = Depends(get_db)):
+    service = ExportService(db)
+    try:
+        filename, content = service.export_article_docx(article_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        headers={'Content-Disposition': build_content_disposition(filename, 'export.docx')},
+    )
+
+
 @router.get('/api/batches/{batch_id}/markdown-export')
 def download_batch_markdown_zip(batch_id: int, db: Session = Depends(get_db)):
     service = ExportService(db)

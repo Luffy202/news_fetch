@@ -223,4 +223,5 @@ python -m unittest backend.tests.test_wechat_fetcher backend.tests.test_article_
 - `PATCH /api/settings`
 - `GET /api/dashboard/summary`
 - `GET /api/articles/{articleId}/markdown`
+- `GET /api/articles/{articleId}/docx`
 - `GET /api/batches/{batchId}/markdown-export`

@@ -21,4 +21,6 @@ def trigger_login(db: Session = Depends(get_db)):
     try:
         return service.trigger_login()
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        message = str(exc)
+        status_code = 409 if '进行中' in message else 400
+        raise HTTPException(status_code=status_code, detail=message) from exc

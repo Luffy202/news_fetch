@@ -1,7 +1,16 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000').replace(/\/$/, '')
+const DEFAULT_API_BASE_URL =
+  window.location.port === '8000' || (!window.location.port && window.location.protocol.startsWith('http'))
+    ? ''
+    : 'http://localhost:8000'
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, '')
+
+export function buildApiUrl(path: string): string {
+  return API_BASE_URL ? `${API_BASE_URL}${path}` : path
+}
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(buildApiUrl(path), {
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {}),
@@ -10,14 +19,14 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
 
   if (!response.ok) {
-    let message = `Request failed: ${response.status}`
+    let message = `请求失败（${response.status}）`
     try {
       const payload = (await response.json()) as { detail?: string }
       if (payload.detail) {
         message = payload.detail
       }
     } catch {
-      message = `Request failed: ${response.status}`
+      message = `请求失败（${response.status}）`
     }
     throw new Error(message)
   }

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from backend.models.schema import Article
 from backend.storage.database import SessionLocal
 from backend.storage.repositories import AccountRepository, ArticleRepository, BatchRepository
+from backend.services.auth_state import TRANSIENT_AUTH_STATUSES
 from backend.services.auth_service import AuthService
 from backend.services.crawler_service import crawler_service
 from backend.services.settings_service import SettingsService
@@ -36,15 +37,20 @@ class BatchService:
             raise ValueError('请至少勾选一个公众号')
 
         settings = self.settings_service.get_settings()
-        if settings.login_status == 'logged_in' and not crawler_service.has_credentials():
-            if not AuthService(self.db).restore_credentials():
-                raise ValueError('登录状态已失效，请重新扫码登录')
+        if settings.login_status in TRANSIENT_AUTH_STATUSES:
+            raise ValueError('当前登录流程尚未完成，请先完成扫码登录')
+        if not crawler_service.has_credentials():
+            if settings.login_status == 'logged_in':
+                if not AuthService(self.db).restore_credentials():
+                    raise ValueError('登录状态已失效，请重新扫码登录')
+            else:
+                raise ValueError('请先完成微信登录')
         batch = self.batch_repository.create(
             batch_no=datetime.utcnow().strftime('batch-%Y%m%d%H%M%S%f'),
             selected_account_ids=[account.id for account in selected_accounts],
             total_accounts=len(selected_accounts),
         )
-        if not task_manager.start(batch.id):
+        if not task_manager.start(batch.id, [account.name for account in selected_accounts]):
             self.batch_repository.update(batch, status='failed', error_message='当前已有爬取任务正在执行')
             raise ValueError('当前已有爬取任务正在执行')
 
@@ -59,10 +65,29 @@ class BatchService:
     def get_current_task(self) -> dict:
         running_batch = self.batch_repository.get_running()
         if running_batch is None:
+            selected_accounts = self.account_repository.list_selected()
+            settings = self.settings_service.get_settings()
+            next_action = 'start_crawl'
+            message = '准备就绪，可以开始抓取。'
+            if settings.login_status in TRANSIENT_AUTH_STATUSES:
+                next_action = 'wait_login'
+                message = '扫码登录尚未完成，请先在浏览器中完成登录。'
+            elif settings.login_status in {'failed', 'expired'}:
+                next_action = 'login'
+                message = '登录状态异常，请重新扫码登录。'
+            elif not selected_accounts:
+                next_action = 'select_accounts'
+                message = '请先添加并勾选至少一个公众号。'
+            elif settings.login_status != 'logged_in' and not crawler_service.has_credentials():
+                next_action = 'login'
+                message = '请先完成微信登录。'
             return {
                 'currentBatchId': None,
                 'status': 'idle',
-                'message': '当前无执行中的爬取任务',
+                'message': message,
+                'progressPercent': 0,
+                'pendingAccounts': [account.name for account in selected_accounts],
+                'nextAction': next_action,
                 'events': [],
             }
         batch = self.batch_repository.get(running_batch.id)
@@ -71,6 +96,8 @@ class BatchService:
                 'currentBatchId': None,
                 'status': 'idle',
                 'message': '当前无执行中的爬取任务',
+                'progressPercent': 0,
+                'nextAction': 'start_crawl',
                 'events': [],
             }
         return self.serialize_task(batch)
@@ -91,17 +118,29 @@ class BatchService:
                 'currentBatchId': batch.id,
                 'status': batch.status,
                 'message': batch.error_message or '',
+                'progressPercent': 0,
+                'nextAction': 'wait',
                 'events': [],
             }
+        progress_snapshot = task_manager.snapshot(detailed_batch.id)
+        total_accounts = detailed_batch.total_accounts or 0
+        completed_accounts = detailed_batch.completed_accounts or 0
+        progress_percent = 0
+        if total_accounts > 0:
+            progress_percent = int((completed_accounts / total_accounts) * 100)
         return {
             'currentBatchId': detailed_batch.id,
             'status': detailed_batch.status,
             'message': detailed_batch.error_message or '',
-            'totalAccounts': detailed_batch.total_accounts,
-            'completedAccounts': detailed_batch.completed_accounts,
+            'totalAccounts': total_accounts,
+            'completedAccounts': completed_accounts,
             'totalArticles': detailed_batch.total_articles,
             'startedAt': detailed_batch.started_at.isoformat() if detailed_batch.started_at else None,
             'finishedAt': detailed_batch.finished_at.isoformat() if detailed_batch.finished_at else None,
+            'currentAccountName': progress_snapshot.get('currentAccountName'),
+            'pendingAccounts': progress_snapshot.get('pendingAccounts', []),
+            'progressPercent': progress_percent,
+            'nextAction': 'wait' if detailed_batch.status == 'running' else 'view_results',
             'events': [
                 {
                     'id': event.id,
@@ -184,10 +223,23 @@ def run_batch_job(batch_id: int) -> None:
         settings = settings_service.get_settings()
         crawler_service.apply_runtime_settings(settings.request_interval)
         logger.info('开始抓取公众号: batch_id=%s, article_count=%s', batch_id, settings.article_count)
-        results = crawler_service.crawl_accounts([account.name for account in selected_accounts], settings.article_count)
+        def handle_account_start(account_name: str, pending_accounts: list[str]) -> None:
+            task_manager.update(
+                batch.id,
+                current_account_name=account_name,
+                pending_accounts=pending_accounts,
+            )
+            batch_repository.add_event(batch.id, f'开始抓取公众号 {account_name}')
+
+        results = crawler_service.crawl_accounts(
+            [account.name for account in selected_accounts],
+            settings.article_count,
+            progress_callback=handle_account_start,
+        )
         total_articles = 0
         completed_accounts = 0
-        for account in selected_accounts:
+        total_accounts = len(selected_accounts)
+        for index, account in enumerate(selected_accounts):
             matched_result = next((item for item in results if item.get('name') == account.name), None)
             if matched_result is None:
                 batch_repository.add_event(batch.id, f'公众号 {account.name} 未抓取到文章', 'warning')
@@ -219,6 +271,11 @@ def run_batch_job(batch_id: int) -> None:
             completed_accounts += 1
             batch = batch_repository.update(batch, completed_accounts=completed_accounts, total_articles=total_articles)
             batch_repository.add_event(batch.id, f'公众号 {account.name} 抓取完成，共 {len(article_rows)} 篇')
+            task_manager.update(
+                batch.id,
+                current_account_name=account.name if completed_accounts < total_accounts else None,
+                pending_accounts=[item.name for item in selected_accounts[index + 1:]],
+            )
 
         batch_repository.update(
             batch,

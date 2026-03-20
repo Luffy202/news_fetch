@@ -9,8 +9,30 @@ export type Settings = {
   feishuWebhook?: string | null
   articleCount: number
   requestInterval: number
-  loginStatus: 'logged_out' | 'logging_in' | 'logged_in' | 'expired'
+  loginStatus: 'logged_out' | 'launching_browser' | 'waiting_for_scan' | 'verifying' | 'logged_in' | 'failed' | 'expired'
   lastLoginAt?: string | null
+}
+
+export type AuthStatus = {
+  loginStatus: Settings['loginStatus']
+  lastLoginAt?: string | null
+  message: string
+  lastError?: string | null
+  canRetry: boolean
+}
+
+export type BootstrapStatus = {
+  runMode: 'local' | 'docker'
+  authMode: string
+  frontendHosted: boolean
+  frontendDistReady: boolean
+  playwrightInstalled: boolean
+  canVisualLogin: boolean
+  visualLoginMessage: string
+  apiBasePath: string
+  blockingIssues: string[]
+  lastStartupError?: string | null
+  message: string
 }
 
 export type Batch = {
@@ -61,6 +83,10 @@ export type TaskStatus = {
   totalArticles?: number
   startedAt?: string | null
   finishedAt?: string | null
+  currentAccountName?: string | null
+  pendingAccounts?: string[]
+  progressPercent?: number
+  nextAction?: 'login' | 'wait_login' | 'select_accounts' | 'start_crawl' | 'wait' | 'view_results' | string
   events: TaskEvent[]
 }
 
