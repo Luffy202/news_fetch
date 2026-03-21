@@ -72,10 +72,16 @@ class AuthStateManager:
 
     def build_payload(self, *, status: str, last_login_at: str | None) -> dict:
         with self._lock:
+            if status in TRANSIENT_AUTH_STATUSES:
+                message = self._message or DEFAULT_AUTH_MESSAGES.get(status, '')
+            elif status == 'failed' and self._last_error:
+                message = self._last_error
+            else:
+                message = DEFAULT_AUTH_MESSAGES.get(status, self._message or '')
             return {
                 'loginStatus': status,
                 'lastLoginAt': last_login_at,
-                'message': self._message or DEFAULT_AUTH_MESSAGES.get(status, ''),
+                'message': message,
                 'lastError': self._last_error if status == 'failed' else None,
                 'canRetry': (not self._running) and status in {'logged_out', 'failed', 'expired'},
             }

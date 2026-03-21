@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from backend.api.deps import get_db
 from backend.services.batch_service import BatchService
+from backend.services.errors import ConflictError
 
 router = APIRouter(prefix='/api/crawl', tags=['crawl'])
 
@@ -14,10 +15,10 @@ def start_crawl(db: Session = Depends(get_db)):
     service = BatchService(db)
     try:
         return service.start_crawl()
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
-        message = str(exc)
-        status_code = 409 if '正在执行' in message else 400
-        raise HTTPException(status_code=status_code, detail=message) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get('/current')

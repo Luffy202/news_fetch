@@ -2,18 +2,9 @@
 setlocal
 cd /d "%~dp0"
 
-set "LOCKFILE=scripts\.start.lock"
-
-if exist "%LOCKFILE%" (
-  echo.
-  echo [提示] 启动脚本已在运行中，请勿重复启动。
-  echo 如果确认没有在运行，请手动删除 %LOCKFILE% 后重试。
-  echo.
-  pause
-  exit /b 1
-)
-
-echo.> "%LOCKFILE%"
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
+set "PYTHONUNBUFFERED=1"
 
 set "BACKEND_RUN_MODE=local"
 set "AUTH_MODE=auto"
@@ -21,14 +12,12 @@ set "AUTH_MODE=auto"
 call scripts\start.bat
 set "EXIT_CODE=%errorlevel%"
 
-del /f /q "%LOCKFILE%" >nul 2>&1
-
 echo.
 if %EXIT_CODE% equ 0 (
-  echo 启动完成。关闭此窗口不影响后台服务运行。
+  echo [INFO] Startup finished. Closing this window will not stop the backend service.
 ) else (
-  echo 启动过程中出现错误，请检查上方日志。
+  echo [ERROR] Startup failed. Review the log output above.
 )
-echo 按任意键关闭此窗口...
+echo [INFO] Press any key to close this window.
 pause >nul
 exit /b %EXIT_CODE%

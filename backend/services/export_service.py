@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from io import BytesIO
 import logging
+from io import BytesIO
 from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from sqlalchemy.orm import Session
 
 from backend.models.schema import Article, Batch
+from backend.services.errors import ConflictError
+from backend.services.runtime_guard import EXPORT_COMPLETED_ONLY_MESSAGE
 
 logger = logging.getLogger(__name__)
 
@@ -18,19 +20,17 @@ class ExportService:
 
     def export_article_markdown(self, article_id: int) -> tuple[str, bytes]:
         logger.info('开始导出 Markdown: article_id=%s', article_id)
-        article = self.db.query(Article).filter(Article.id == article_id).first()
-        if article is None:
-            raise ValueError('文章不存在')
-        filename = f'{self.slugify(article.title) or article.id}.md'
+        article = self.get_article_or_raise(article_id)
+        self.ensure_batch_completed(article.batch_id)
+        filename = self.build_article_filename(article, 'md')
         logger.info('Markdown 导出完成: article_id=%s, filename=%s', article_id, filename)
         return filename, self.render_article_markdown(article).encode('utf-8')
 
     def export_article_docx(self, article_id: int) -> tuple[str, bytes]:
         logger.info('开始导出 DOCX: article_id=%s', article_id)
-        article = self.db.query(Article).filter(Article.id == article_id).first()
-        if article is None:
-            raise ValueError('文章不存在')
-        filename = f'{self.slugify(article.title) or article.id}.docx'
+        article = self.get_article_or_raise(article_id)
+        self.ensure_batch_completed(article.batch_id)
+        filename = self.build_article_filename(article, 'docx')
         logger.info('DOCX 导出完成: article_id=%s, filename=%s', article_id, filename)
         return filename, self.render_article_docx(article)
 
@@ -39,6 +39,8 @@ class ExportService:
         batch = self.db.query(Batch).filter(Batch.id == batch_id).first()
         if batch is None:
             raise ValueError('批次不存在')
+        self.ensure_batch_completed(batch.id, batch=batch)
+
         articles = self.db.query(Article).filter(Article.batch_id == batch_id).order_by(Article.created_at.asc()).all()
         if not articles:
             raise ValueError('该批次暂无可导出文章')
@@ -46,42 +48,43 @@ class ExportService:
         output = BytesIO()
         with ZipFile(output, 'w', compression=ZIP_DEFLATED) as zip_file:
             for index, article in enumerate(articles, start=1):
-                file_name = f'{index:02d}-{self.slugify(article.title) or article.id}.md'
-                zip_file.writestr(file_name, self.render_article_markdown(article))
-        filename = f'batch-{batch.id}-articles.zip'
-        logger.info('批量 ZIP 导出完成: batch_id=%s, filename=%s, articles=%s', batch_id, filename, len(articles))
-        return filename, output.getvalue()
+                filename = f'{index:02d}-{self.slugify(article.title) or article.id}.md'
+                zip_file.writestr(filename, self.render_article_markdown(article))
+
+        archive_name = f'batch-{batch.id}-articles.zip'
+        logger.info('批量 ZIP 导出完成: batch_id=%s, filename=%s, articles=%s', batch_id, archive_name, len(articles))
+        return archive_name, output.getvalue()
 
     def render_article_markdown(self, article: Article) -> str:
-        title, publish_time, source, summary, content = self.extract_article_sections(article)
+        export_data = self.build_article_export_data(article)
         return '\n'.join([
-            f'# {title}',
+            f'# {export_data["title"]}',
             '',
-            f'- 发布时间：{publish_time}',
-            f'- 原文链接：{source}',
+            f'- 发布时间：{export_data["publish_time"]}',
+            f'- 原文链接：{export_data["source"]}',
             '',
             '## 摘要',
             '',
-            summary,
+            export_data['summary'],
             '',
             '## 正文',
             '',
-            content,
+            export_data['content'],
             '',
         ])
 
     def render_article_docx(self, article: Article) -> bytes:
-        title, publish_time, source, summary, content = self.extract_article_sections(article)
+        export_data = self.build_article_export_data(article)
         lines = [
-            title,
-            f'发布时间：{publish_time}',
-            f'原文链接：{source}',
+            export_data['title'],
+            f'发布时间：{export_data["publish_time"]}',
+            f'原文链接：{export_data["source"]}',
             '',
             '摘要',
-            summary,
+            export_data['summary'],
             '',
             '正文',
-            content,
+            export_data['content'],
         ]
 
         output = BytesIO()
@@ -105,10 +108,7 @@ class ExportService:
                 'Target="word/document.xml"/>'
                 '</Relationships>',
             )
-            paragraphs = ''.join(
-                f'<w:p><w:r><w:t xml:space="preserve">{escape(line)}</w:t></w:r></w:p>'
-                for line in lines
-            )
+            paragraphs = ''.join(self.render_docx_paragraph_xml(line) for line in lines)
             zip_file.writestr(
                 'word/document.xml',
                 '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -118,13 +118,40 @@ class ExportService:
             )
         return output.getvalue()
 
-    def extract_article_sections(self, article: Article) -> tuple[str, str, str, str, str]:
-        title = article.title or '无标题'
-        publish_time = article.publish_time or '未知时间'
-        source = article.url or '无原文链接'
-        summary = article.summary or article.digest or '暂无摘要'
-        content = article.content or '正文缺失'
-        return title, publish_time, source, summary, content
+    def get_article_or_raise(self, article_id: int) -> Article:
+        article = self.db.query(Article).filter(Article.id == article_id).first()
+        if article is None:
+            raise ValueError('文章不存在')
+        return article
+
+    def ensure_batch_completed(self, batch_id: int, *, batch: Batch | None = None) -> Batch:
+        resolved_batch = batch or self.db.query(Batch).filter(Batch.id == batch_id).first()
+        if resolved_batch is None:
+            raise ValueError('批次不存在')
+        if resolved_batch.status != 'completed':
+            raise ConflictError(EXPORT_COMPLETED_ONLY_MESSAGE)
+        return resolved_batch
+
+    def build_article_filename(self, article: Article, extension: str) -> str:
+        return f'{self.slugify(article.title) or article.id}.{extension}'
+
+    def build_article_export_data(self, article: Article) -> dict[str, str]:
+        return {
+            'title': article.title or '无标题',
+            'publish_time': article.publish_time or '未知时间',
+            'source': article.url or '无原文链接',
+            'summary': article.summary or article.digest or '暂无摘要',
+            'content': article.content or '正文缺失',
+        }
+
+    def render_docx_paragraph_xml(self, line: str) -> str:
+        segments = line.splitlines() or ['']
+        runs: list[str] = []
+        for index, segment in enumerate(segments):
+            runs.append(f'<w:r><w:t xml:space="preserve">{escape(segment)}</w:t></w:r>')
+            if index < len(segments) - 1:
+                runs.append('<w:r><w:br/></w:r>')
+        return f'<w:p>{"".join(runs)}</w:p>'
 
     def slugify(self, value: str) -> str:
         keep_chars = []

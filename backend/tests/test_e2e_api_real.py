@@ -11,12 +11,10 @@ from backend.tests.e2e_helpers import (
     assert_output_json,
     ensure_target_account_selected,
     get_auth_status,
-    get_batch_detail,
     get_current_task,
     get_latest_completed_batch_detail,
     get_settings,
     get_sqlite_batch_article_counts,
-    patch_json,
     require_logged_in,
     require_service_running,
     restore_settings,
@@ -55,7 +53,7 @@ class TestRealApiSmoke(unittest.TestCase):
 
         start_response = start_crawl()
         if start_response.status_code != 202:
-            self.fail(f"启动抓取失败: {start_response.status_code} {start_response.text}")
+            self.fail(f'启动抓取失败: {start_response.status_code} {start_response.text}')
 
         task_payload = start_response.json()
         batch_id = task_payload['currentBatchId']
@@ -101,7 +99,7 @@ class TestRealApiFullFlow(unittest.TestCase):
             set_minimal_crawl_settings()
             start_response = start_crawl()
             if start_response.status_code != 202:
-                self.fail(f"启动抓取失败: {start_response.status_code} {start_response.text}")
+                self.fail(f'启动抓取失败: {start_response.status_code} {start_response.text}')
             batch_detail = wait_for_batch_terminal(start_response.json()['currentBatchId'])
 
         self.assertEqual(batch_detail['status'], 'completed')
@@ -128,7 +126,7 @@ class TestRealApiFullFlow(unittest.TestCase):
                     expected_status=(202, 400),
                     timeout=180,
                 )
-            except Exception as exc:  # pragma: no cover - 真实环境线程异常透传
+            except Exception as exc:  # pragma: no cover
                 result['exception'] = exc
 
         thread = threading.Thread(target=trigger_login_request, daemon=True)
@@ -161,6 +159,15 @@ class TestRealApiFullFlow(unittest.TestCase):
         self.assertIn('## 正文', markdown_text)
         self.assertIn('原文链接', markdown_text)
 
+        docx_response = api_request('GET', f"/api/articles/{article['id']}/docx")
+        self.assertEqual(docx_response.status_code, 200)
+        self.assertEqual(
+            docx_response.headers.get('content-type'),
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        )
+        with ZipFile(BytesIO(docx_response.content)) as zip_file:
+            self.assertIn('word/document.xml', zip_file.namelist())
+
         zip_response = api_request('GET', f"/api/batches/{batch_detail['id']}/markdown-export")
         self.assertEqual(zip_response.status_code, 200)
         self.assertGreater(len(zip_response.content), 0)
@@ -177,13 +184,13 @@ class TestRealApiFullFlow(unittest.TestCase):
 
         first_response = start_crawl()
         if first_response.status_code != 202:
-            self.fail(f"首次启动抓取失败: {first_response.status_code} {first_response.text}")
+            self.fail(f'首次启动抓取失败: {first_response.status_code} {first_response.text}')
 
         batch_id = first_response.json()['currentBatchId']
         try:
             second_response = start_crawl()
             self.assertEqual(second_response.status_code, 409)
-            self.assertIn('当前已有爬取任务正在执行', second_response.text)
+            self.assertIn('正在执行', second_response.json().get('detail', ''))
         finally:
             wait_for_batch_terminal(batch_id)
 

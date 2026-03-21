@@ -15,7 +15,7 @@ export default function ArticleExportActions({
     <div>
       {typeof articleId === 'number' ? (
         <button type="button" onClick={() => onDownloadArticle?.(articleId)}>
-          下载 Markdown
+          下载 MD
         </button>
       ) : null}
       {typeof batchId === 'number' ? (

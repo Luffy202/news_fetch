@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from backend.api.deps import get_db
 from backend.services.account_service import AccountService
+from backend.services.errors import ConflictError
 
 router = APIRouter(prefix='/api/accounts', tags=['accounts'])
 
@@ -40,6 +41,8 @@ def create_account(payload: AccountCreatePayload, db: Session = Depends(get_db))
     service = AccountService(db)
     try:
         account = service.create_account(payload.name, payload.isSelected)
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
@@ -55,6 +58,8 @@ def update_account(account_id: int, payload: AccountUpdatePayload, db: Session =
     service = AccountService(db)
     try:
         account = service.update_account(account_id, name=payload.name, is_selected=payload.isSelected)
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
@@ -70,6 +75,8 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
     service = AccountService(db)
     try:
         service.delete_account(account_id)
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return Response(status_code=204)

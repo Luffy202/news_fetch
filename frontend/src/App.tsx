@@ -76,15 +76,17 @@ export default function App() {
 
   async function refreshTaskData() {
     const selectedBatchId = selectedBatch?.id
-    const [nextTask, nextBatches, nextAuth, nextSelectedBatch] = await Promise.all([
+    const [nextTask, nextBatches, nextAuth, nextSelectedBatch, nextDashboard] = await Promise.all([
       loadCurrentTask(),
       loadBatchHistory(),
       loadAuthStatus(),
       selectedBatchId ? loadBatchDetail(selectedBatchId).catch(() => undefined) : Promise.resolve(undefined),
+      loadDashboardSummary(),
     ])
     setCurrentTask(nextTask)
     setBatches(nextBatches)
     setLoginState(nextAuth)
+    setDashboard(nextDashboard)
     if (selectedBatchId) {
       setSelectedBatch(nextSelectedBatch)
     }
@@ -95,11 +97,6 @@ export default function App() {
     setSettings(nextSettings)
   }
 
-  async function refreshDashboard() {
-    const nextDashboard = await loadDashboardSummary()
-    setDashboard(nextDashboard)
-  }
-
   async function refreshBootstrap() {
     const nextBootstrap = await loadBootstrapStatus()
     setBootstrap(nextBootstrap)
@@ -107,7 +104,7 @@ export default function App() {
 
   async function refreshAll() {
     try {
-      await Promise.all([refreshAccounts(), refreshTaskData(), refreshSettings(), refreshDashboard(), refreshBootstrap()])
+      await Promise.all([refreshAccounts(), refreshTaskData(), refreshSettings(), refreshBootstrap()])
       setError('')
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : '加载数据失败')
@@ -124,6 +121,13 @@ export default function App() {
     }, 2000)
     return () => window.clearInterval(timer)
   }, [selectedBatch?.id])
+
+  useEffect(() => {
+    if (view !== 'dashboard' || selectedBatch || batches.length === 0) {
+      return
+    }
+    void handleSelectBatch(batches[0].id)
+  }, [view, batches, selectedBatch?.id])
 
   async function handleCreate(name: string) {
     try {
@@ -175,7 +179,7 @@ export default function App() {
       await refreshTaskData()
       setError('')
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : '启动爬取失败')
+      setError(requestError instanceof Error ? requestError.message : '启动抓取失败')
     }
   }
 
@@ -187,10 +191,6 @@ export default function App() {
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : '加载批次详情失败')
     }
-  }
-
-  function handleCloseBatchDetail() {
-    setSelectedBatch(undefined)
   }
 
   async function handleSaveSettings(payload: Partial<Pick<Settings, 'feishuWebhook' | 'articleCount' | 'requestInterval'>>) {
@@ -206,8 +206,6 @@ export default function App() {
   async function handlePushFeishu(batchId: number) {
     try {
       await pushCurrentBatchToFeishu(batchId)
-      const detail = await loadBatchDetail(batchId)
-      setSelectedBatch(detail)
       await refreshTaskData()
       setError('')
     } catch (requestError) {
@@ -220,7 +218,7 @@ export default function App() {
       await exportArticleMarkdown(articleId)
       setError('')
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : '下载 Markdown 失败')
+      setError(requestError instanceof Error ? requestError.message : '下载 MD 失败')
     }
   }
 
@@ -242,6 +240,11 @@ export default function App() {
     }
   }
 
+  function handleOpenDashboard() {
+    setView('dashboard')
+    setIsSidebarOpen(false)
+  }
+
   const NavItem = ({
     viewName,
     label,
@@ -252,93 +255,84 @@ export default function App() {
     icon: typeof LayoutDashboard
   }) => (
     <button
+      type="button"
       onClick={() => {
-        if (viewName !== 'crawl') {
-          handleCloseBatchDetail()
+        if (viewName !== 'dashboard') {
+          setSelectedBatch(undefined)
         }
         setView(viewName)
         setIsSidebarOpen(false)
       }}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+      className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 transition-colors ${
         view === viewName
-          ? 'bg-blue-50 text-blue-600 font-medium'
+          ? 'bg-blue-50 font-medium text-blue-600'
           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
       }`}
     >
-      <Icon className="w-5 h-5" />
+      <Icon className="h-5 w-5" />
       <span>{label}</span>
     </button>
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
-      <div className="md:hidden bg-white border-b border-gray-200 p-4 flex items-center justify-between sticky top-0 z-20">
-        <h1 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-          <LayoutDashboard className="w-5 h-5 text-blue-600" />
+    <div className="flex min-h-screen flex-col bg-gray-50 md:flex-row">
+      <div className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white p-4 md:hidden">
+        <h1 className="flex items-center gap-2 text-lg font-bold text-gray-800">
+          <LayoutDashboard className="h-5 w-5 text-blue-600" />
           <span>NewsFetch</span>
         </h1>
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-gray-600">
-          {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        <button type="button" onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-gray-600">
+          {isSidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
       </div>
 
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-30 md:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
+      {isSidebarOpen ? (
+        <div className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm md:hidden" onClick={() => setIsSidebarOpen(false)} />
+      ) : null}
 
       <aside
-        className={`
-          fixed md:sticky top-0 h-full md:h-screen w-64 bg-white border-r border-gray-200 flex-shrink-0 z-40 transition-transform duration-300 ease-in-out
-          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-        `}
+        className={`fixed top-0 z-40 h-full w-64 flex-shrink-0 border-r border-gray-200 bg-white transition-transform duration-300 ease-in-out md:sticky md:h-screen ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
       >
-        <div className="p-6 border-b border-gray-100 hidden md:block">
-          <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-            <LayoutDashboard className="w-6 h-6 text-blue-600" />
+        <div className="hidden border-b border-gray-100 p-6 md:block">
+          <h1 className="flex items-center gap-2 text-xl font-bold text-gray-800">
+            <LayoutDashboard className="h-6 w-6 text-blue-600" />
             <span>NewsFetch</span>
           </h1>
-          <p className="mt-2 text-sm text-gray-500">双击启动后，从这里完成登录、抓取和结果查看。</p>
         </div>
-        <nav className="p-4 space-y-2 mt-14 md:mt-0">
+
+        <nav className="mt-14 space-y-2 p-4 md:mt-0">
           <NavItem viewName="crawl" label="启动向导" icon={Search} />
           <NavItem viewName="accounts" label="公众号管理" icon={Users} />
-          <NavItem viewName="dashboard" label="源数据看板" icon={ChartBar} />
+          <NavItem viewName="dashboard" label="抓取结果看板" icon={ChartBar} />
           <NavItem viewName="settings" label="系统设置" icon={SettingsIcon} />
         </nav>
       </aside>
 
-      <main className="flex-1 p-4 md:p-8 w-full md:w-auto overflow-x-hidden">
-        <header className="mb-6 md:mb-8 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+      <main className="w-full flex-1 overflow-x-hidden p-4 md:w-auto md:p-8">
+        <header className="mb-6 flex flex-col gap-4 md:mb-8 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-xl md:text-2xl font-bold text-gray-800">
+            <h2 className="text-xl font-bold text-gray-800 md:text-2xl">
               {view === 'crawl' && '启动向导'}
               {view === 'accounts' && '公众号管理'}
-              {view === 'dashboard' && '源数据看板'}
+              {view === 'dashboard' && '抓取结果看板'}
               {view === 'settings' && '系统设置'}
             </h2>
-            <p className="text-gray-500 mt-1 text-xs md:text-sm">
-              {view === 'crawl' && '把环境检查、微信登录、公众号选择、抓取和结果查看串成一条顺滑流程。'}
-              {view === 'accounts' && '配置需要监控的微信公众号。'}
-              {view === 'dashboard' && '查看历史数据统计与趋势。'}
-              {view === 'settings' && '调整系统全局参数和通知设置。'}
-            </p>
           </div>
         </header>
 
-        {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
-            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+        {error ? (
+          <div className="animate-in fade-in slide-in-from-top-2 mb-6 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+            <AlertCircle className="h-5 w-5 flex-shrink-0" />
             <span className="text-sm">{error}</span>
-            <button onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-700">
-              ✕
+            <button type="button" onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-700">
+              <X className="h-4 w-4" />
             </button>
           </div>
-        )}
+        ) : null}
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 min-h-[600px] p-4 md:p-6 transition-all duration-200">
+        <div className="min-h-[600px] rounded-xl border border-gray-100 bg-white p-4 shadow-sm transition-all duration-200 md:p-6">
           {view === 'crawl' ? (
             <CrawlPage
               bootstrap={bootstrap}
@@ -347,22 +341,27 @@ export default function App() {
               settings={settings}
               currentTask={currentTask}
               batches={batches}
-              selectedBatch={selectedBatch}
               onCreate={handleCreate}
               onToggle={handleToggle}
               onLogin={handleLogin}
               onStartCrawl={handleStartCrawl}
               onSelectBatch={handleSelectBatch}
-              onCloseBatchDetail={handleCloseBatchDetail}
               onPushFeishu={handlePushFeishu}
-              onDownloadArticle={handleDownloadArticle}
-              onDownloadArticleDocx={handleDownloadArticleDocx}
               onDownloadBatch={handleDownloadBatch}
+              onOpenDashboard={handleOpenDashboard}
             />
           ) : view === 'accounts' ? (
             <AccountsPage accounts={accounts} onCreate={handleCreate} onToggle={handleToggle} onDelete={handleDelete} />
           ) : view === 'dashboard' ? (
-            <DashboardPage summary={dashboard} />
+            <DashboardPage
+              summary={dashboard}
+              batches={batches}
+              selectedBatch={selectedBatch}
+              onSelectBatch={handleSelectBatch}
+              onDownloadArticle={handleDownloadArticle}
+              onDownloadArticleDocx={handleDownloadArticleDocx}
+              onDownloadBatch={handleDownloadBatch}
+            />
           ) : (
             <SettingsPage settings={settings} bootstrap={bootstrap} onSave={handleSaveSettings} />
           )}
