@@ -163,6 +163,12 @@ exit /b 0
 :ensure_frontend_dist
 if /I "%SKIP_FRONTEND_BUILD%"=="1" exit /b 0
 
+call :frontend_build_required
+if /I "!FRONTEND_BUILD_REQUIRED!"=="0" (
+  call :log_info "Frontend build output is up to date"
+  exit /b 0
+)
+
 where npm >nul 2>&1
 if errorlevel 1 (
   call :write_startup_error "npm was not found. Install Node.js before starting the project."
@@ -179,12 +185,6 @@ if not exist "frontend\node_modules" (
     exit /b 1
   )
   popd
-)
-
-call :frontend_build_required
-if /I "!FRONTEND_BUILD_REQUIRED!"=="0" (
-  call :log_info "Frontend build output is up to date"
-  exit /b 0
 )
 
 call :log_info "Building frontend assets"
