@@ -270,9 +270,9 @@ exit /b 1
 
 :emit_backend_log_updates
 set "CURRENT_LOG_LINE=0"
-for /f %%C in ('powershell -NoProfile -Command "$path = 'output/local-backend.log'; if (Test-Path -LiteralPath $path) { (Get-Content -LiteralPath $path).Count } else { 0 }"') do set "CURRENT_LOG_LINE=%%C"
+for /f %%C in ('powershell -NoProfile -Command "$path = 'output/local-backend.log'; if (Test-Path -LiteralPath $path) { [int](Get-Content -LiteralPath $path).Count } else { 0 }"') do set "CURRENT_LOG_LINE=%%C"
 if !CURRENT_LOG_LINE! LEQ !LAST_LOG_LINE! exit /b 0
-for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command "$path = 'output/local-backend.log'; if (Test-Path -LiteralPath $path) { Get-Content -LiteralPath $path | Select-Object -Skip !LAST_LOG_LINE! }"`) do echo [backend] %%L
+for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command "$path = 'output/local-backend.log'; $skip = 0; if ($env:LAST_LOG_LINE -match '^\d+$') { $skip = [int]$env:LAST_LOG_LINE }; if (Test-Path -LiteralPath $path) { Get-Content -LiteralPath $path | Select-Object -Skip $skip }"`) do echo [backend] %%L
 set "LAST_LOG_LINE=!CURRENT_LOG_LINE!"
 exit /b 0
 
