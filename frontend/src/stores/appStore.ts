@@ -1,12 +1,22 @@
-import { createAccount, deleteAccount, listAccounts, updateAccount } from '../services/accounts'
+import { createAccount, deleteAccount, listAccounts, precheckAccount, updateAccount } from '../services/accounts'
 import { getBootstrapStatus } from '../services/app'
-import { getBatchDetail, listBatches } from '../services/batches'
+import { deleteBatch, getBatchDetail, listBatches } from '../services/batches'
 import { getAuthStatus, getCurrentTask, startCrawl, triggerLogin } from '../services/crawl'
 import { pushBatchToFeishu } from '../services/feishu'
 import { getDashboardSummary } from '../services/dashboard'
 import { downloadArticleDocx, downloadArticleMarkdown, downloadBatchZip } from '../services/exports'
 import { getSettings, updateSettings } from '../services/settings'
-import type { Account, AuthStatus, Batch, BatchDetail, BootstrapStatus, DashboardSummary, Settings, TaskStatus } from '../types/api'
+import type {
+  Account,
+  AuthStatus,
+  Batch,
+  BatchDetail,
+  BootstrapStatus,
+  CreateAccountInput,
+  DashboardSummary,
+  Settings,
+  TaskStatus,
+} from '../types/api'
 
 export type AppState = {
   accounts: Account[]
@@ -30,8 +40,12 @@ export async function loadAccounts(): Promise<Account[]> {
   return listAccounts()
 }
 
-export async function createAccountAction(name: string): Promise<Account> {
-  return createAccount({ name })
+export async function createAccountAction(payload: CreateAccountInput): Promise<Account> {
+  return createAccount(payload)
+}
+
+export async function precheckAccountAction(name: string) {
+  return precheckAccount(name)
 }
 
 export async function toggleAccountSelection(account: Account): Promise<Account> {
@@ -46,8 +60,8 @@ export async function loadAuthStatus(): Promise<AuthStatus> {
   return getAuthStatus()
 }
 
-export async function triggerLoginAction(): Promise<AuthStatus> {
-  return triggerLogin()
+export async function triggerLoginAction(force = false): Promise<AuthStatus> {
+  return triggerLogin(force)
 }
 
 export async function startCrawlAction(): Promise<TaskStatus> {
@@ -66,11 +80,15 @@ export async function loadBatchDetail(batchId: number): Promise<BatchDetail> {
   return getBatchDetail(batchId)
 }
 
+export async function deleteBatchAction(batchId: number): Promise<void> {
+  await deleteBatch(batchId)
+}
+
 export async function loadSettings(): Promise<Settings> {
   return getSettings()
 }
 
-export async function saveSettings(payload: Partial<Pick<Settings, 'feishuWebhook' | 'articleCount' | 'requestInterval'>>): Promise<Settings> {
+export async function saveSettings(payload: Partial<Pick<Settings, 'feishuWebhook' | 'proxyUrl' | 'articleCount' | 'requestInterval'>>): Promise<Settings> {
   return updateSettings(payload)
 }
 

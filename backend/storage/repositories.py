@@ -29,8 +29,11 @@ class AccountRepository:
     def get_by_name(self, name: str) -> Optional[Account]:
         return self.db.query(Account).filter(Account.name == name).first()
 
-    def create(self, name: str, is_selected: bool = False) -> Account:
-        account = Account(name=name, is_selected=is_selected)
+    def get_by_fakeid(self, fakeid: str) -> Optional[Account]:
+        return self.db.query(Account).filter(Account.fakeid == fakeid).first()
+
+    def create(self, name: str, fakeid: str | None = None, is_selected: bool = False) -> Account:
+        account = Account(name=name, fakeid=fakeid, is_selected=is_selected)
         self.db.add(account)
         self.db.commit()
         self.db.refresh(account)
@@ -54,7 +57,7 @@ class SettingsRepository:
     def get_singleton(self) -> Settings:
         settings = self.db.query(Settings).first()
         if settings is None:
-            settings = Settings()
+            settings = Settings(proxy_url='')
             self.db.add(settings)
             self.db.commit()
             self.db.refresh(settings)
@@ -65,6 +68,7 @@ class SettingsRepository:
         settings: Settings,
         *,
         feishu_webhook: str | None | object = None,
+        proxy_url: str | None | object = None,
         article_count: int | None = None,
         request_interval: float | None = None,
         login_status: str | None = None,
@@ -72,6 +76,8 @@ class SettingsRepository:
     ) -> Settings:
         if feishu_webhook is not None:
             settings.feishu_webhook = feishu_webhook
+        if proxy_url is not None:
+            settings.proxy_url = proxy_url
         if article_count is not None:
             settings.article_count = article_count
         if request_interval is not None:
@@ -132,6 +138,15 @@ class BatchRepository:
         self.db.commit()
         self.db.refresh(event)
         return event
+
+    def delete_related_records(self, batch_id: int) -> None:
+        self.db.query(Article).filter(Article.batch_id == batch_id).delete(synchronize_session=False)
+        self.db.query(TaskEvent).filter(TaskEvent.batch_id == batch_id).delete(synchronize_session=False)
+        self.db.commit()
+
+    def delete(self, batch: Batch) -> None:
+        self.db.delete(batch)
+        self.db.commit()
 
 
 class ArticleRepository:

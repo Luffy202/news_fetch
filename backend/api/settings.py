@@ -12,6 +12,7 @@ router = APIRouter(prefix='/api/settings', tags=['settings'])
 
 class SettingsPayload(BaseModel):
     feishuWebhook: str | None = None
+    proxyUrl: str | None = None
     articleCount: int | None = None
     requestInterval: float | None = None
 
@@ -29,6 +30,7 @@ def update_settings(payload: SettingsPayload, db: Session = Depends(get_db)):
     try:
         settings = service.update_settings(
             feishu_webhook=payload.feishuWebhook,
+            proxy_url=payload.proxyUrl,
             article_count=payload.articleCount,
             request_interval=payload.requestInterval,
         )

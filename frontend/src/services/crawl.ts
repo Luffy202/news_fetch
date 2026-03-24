@@ -5,9 +5,10 @@ export function getAuthStatus() {
   return request<AuthStatus>('/api/auth/status')
 }
 
-export function triggerLogin() {
+export function triggerLogin(force = false) {
   return request<AuthStatus>('/api/auth/login', {
     method: 'POST',
+    body: JSON.stringify({ force }),
   })
 }
 

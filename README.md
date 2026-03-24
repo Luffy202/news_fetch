@@ -200,6 +200,81 @@ scripts\start.bat
 - 回归测试已迁入 `backend/tests/`，根目录 `tests.py` 仅保留兼容入口
 - 后续若确认不再需要 CLI，可在稳定周期后移除这些兼容层与根目录测试入口
 
+## OpenClaw 一键对接
+
+仓库内已经内置好 OpenClaw 用的项目专属 skill，同时补了一键接入脚本：
+
+- `scripts/setup_openclaw.sh`
+- `skills/news-fetch-flow/SKILL.md`
+- `skills/news-fetch-flow/scripts/news_fetch_client.py`
+- `skills/news-fetch-flow/references/api.md`
+
+如果你的本机还没有 OpenClaw，直接执行：
+
+```bash
+bash scripts/setup_openclaw.sh
+```
+
+这个脚本会依次完成：
+
+1. 检查是否已安装 `openclaw`
+2. 缺失时调用 OpenClaw 官方安装脚本
+3. 执行 `openclaw setup --workspace ~/.openclaw/workspace`
+4. 将仓库内 skill 软链接到 `~/.openclaw/workspace/skills/news-fetch-flow`
+5. 将当前仓库软链接到 `~/.openclaw/workspace/projects/news_fetch`
+6. 检查本地 `news_fetch` 后端是否已启动
+
+这样做的目的是让 OpenClaw 在默认工作区里就能直接看到：
+
+- 可调用的 skill
+- 当前项目源码
+- 当前项目的 `README.md`
+
+### 让 OpenClaw 自己继续完成配置
+
+完成脚本后，打开 OpenClaw：
+
+```bash
+openclaw dashboard
+```
+
+然后在 OpenClaw 里直接说：
+
+```text
+请先阅读 ~/.openclaw/workspace/projects/news_fetch/README.md 里的“OpenClaw 一键对接”章节，再检查 http://127.0.0.1:8000 服务状态，并使用 news_fetch_flow skill 协助我完成登录、添加公众号和启动抓取。
+```
+
+如果本地服务尚未启动，先运行：
+
+```bash
+bash scripts/start.sh
+```
+
+### 可选环境变量
+
+- `OPENCLAW_WORKSPACE=/path/to/workspace`：自定义 OpenClaw 工作区
+- `OPENCLAW_REPO_ALIAS=my_news_fetch`：自定义项目在 OpenClaw 工作区内的挂载目录名
+- `SKIP_OPENCLAW_INSTALL=1`：只做挂载与检查，不自动安装 OpenClaw
+- `NEWS_FETCH_BASE_URL=http://127.0.0.1:8000`：自定义本地后端地址
+
+### 仓库内 Skill 说明
+
+该 skill 用于让 OpenClaw 直接调用本地 `news_fetch` API，完成服务检查、登录检查/刷新、公众号预检与添加、勾选、启动抓取、查看批次与触发推送。
+
+本地快速验证：
+
+```bash
+python3 skills/news-fetch-flow/scripts/news_fetch_client.py health
+python3 skills/news-fetch-flow/scripts/news_fetch_client.py auth-status
+python3 skills/news-fetch-flow/scripts/news_fetch_client.py batches-list
+```
+
+默认 API 地址固定为：
+
+```text
+http://127.0.0.1:8000
+```
+
 ## 测试
 
 ```bash

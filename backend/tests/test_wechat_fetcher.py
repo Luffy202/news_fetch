@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 class TestWechatFetcher(unittest.TestCase):
@@ -9,6 +9,10 @@ class TestWechatFetcher(unittest.TestCase):
         self.fetcher = wechat_fetcher
         self.fetcher._cookie = ''
         self.fetcher._token = ''
+        self.original_session = self.fetcher._session
+
+    def tearDown(self):
+        self.fetcher.set_request_session(self.original_session)
 
     def test_set_credentials(self):
         self.fetcher.set_credentials('test_cookie', 'test_token')
@@ -21,18 +25,36 @@ class TestWechatFetcher(unittest.TestCase):
         self.assertEqual(headers['Cookie'], 'my_cookie')
         self.assertIn('User-Agent', headers)
 
-    @patch('backend.services.wechat_fetcher.requests.get')
-    def test_search_account_success(self, mock_get):
-        mock_get.return_value.json.return_value = {
+    def test_search_account_success(self):
+        mock_session = Mock()
+        mock_session.get.return_value.json.return_value = {
             'base_resp': {'ret': 0},
             'list': [{'nickname': '测试号', 'fakeid': 'fake123'}],
         }
+        mock_session.get.return_value.raise_for_status.return_value = None
+        self.fetcher.set_request_session(mock_session)
         result = self.fetcher.search_account('测试号')
         self.assertEqual(result, 'fake123')
 
-    @patch('backend.services.wechat_fetcher.requests.get')
-    def test_get_articles_success(self, mock_get):
-        mock_get.return_value.json.return_value = {
+    def test_search_accounts_returns_candidates(self):
+        mock_session = Mock()
+        mock_session.get.return_value.json.return_value = {
+            'base_resp': {'ret': 0},
+            'list': [
+                {'nickname': '测试号日报', 'fakeid': 'fake-1'},
+                {'nickname': '测试号观察', 'fakeid': 'fake-2'},
+            ],
+        }
+        mock_session.get.return_value.raise_for_status.return_value = None
+        self.fetcher.set_request_session(mock_session)
+
+        candidates = self.fetcher.search_accounts('测试号')
+        self.assertEqual(len(candidates), 2)
+        self.assertEqual(candidates[0]['nickname'], '测试号日报')
+
+    def test_get_articles_success(self):
+        mock_session = Mock()
+        mock_session.get.return_value.json.return_value = {
             'base_resp': {'ret': 0},
             'app_msg_list': [
                 {
@@ -45,6 +67,8 @@ class TestWechatFetcher(unittest.TestCase):
                 }
             ],
         }
+        mock_session.get.return_value.raise_for_status.return_value = None
+        self.fetcher.set_request_session(mock_session)
         articles = self.fetcher.get_articles('fake123', count=5)
         self.assertEqual(len(articles), 1)
         self.assertEqual(articles[0]['title'], '文章1')

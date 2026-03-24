@@ -7,6 +7,25 @@ from bs4 import BeautifulSoup
 
 from backend import runtime_config
 
+_session = requests.Session()
+_session.trust_env = False
+
+
+def set_request_session(session: requests.Session | None):
+    global _session
+    _session = session or requests.Session()
+    _session.trust_env = False
+
+
+def _format_fetch_error(exc: Exception) -> str:
+    if isinstance(exc, requests.exceptions.ProxyError):
+        return '代理连接失败，请检查代理配置'
+    if isinstance(exc, requests.exceptions.Timeout):
+        return '网络请求超时'
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        return '无法连接文章页面，请检查网络或代理配置'
+    return '抓取失败，请稍后重试'
+
 
 def fetch_article_content(url):
     if not url:
@@ -19,7 +38,8 @@ def fetch_article_content(url):
     }
 
     try:
-        resp = requests.get(url, headers=headers, timeout=15)
+        resp = _session.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
         resp.encoding = 'utf-8'
         soup = BeautifulSoup(resp.text, 'html.parser')
 
@@ -31,7 +51,7 @@ def fetch_article_content(url):
             return content_div.get_text(separator='\n', strip=True)
         return '[无法解析正文内容]'
     except Exception as exc:
-        return f'[抓取失败: {exc}]'
+        return f'[抓取失败: {_format_fetch_error(exc)}]'
 
 
 def enrich_articles_with_content(articles):

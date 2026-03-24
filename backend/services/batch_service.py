@@ -11,7 +11,7 @@ from backend.models.schema import Article
 from backend.services.auth_service import AuthService
 from backend.services.auth_state import TRANSIENT_AUTH_STATUSES
 from backend.services.crawler_service import crawler_service
-from backend.services.errors import ConflictError
+from backend.services.errors import ConflictError, WechatAuthError
 from backend.services.runtime_guard import RUNNING_CRAWL_MESSAGE, has_running_crawl
 from backend.services.settings_service import SettingsService
 from backend.services.task_manager import task_manager
@@ -115,6 +115,16 @@ class BatchService:
         if batch is None:
             raise ValueError('批次不存在')
         return self.serialize_batch_detail(batch)
+
+    def delete_batch(self, batch_id: int) -> None:
+        batch = self.batch_repository.get(batch_id)
+        if batch is None:
+            raise ValueError('批次不存在')
+        if batch.status == 'running':
+            raise ConflictError('运行中的批次不可删除')
+
+        self.batch_repository.delete_related_records(batch.id)
+        self.batch_repository.delete(batch)
 
     def serialize_task(self, batch) -> dict:
         detailed_batch = self.batch_repository.get(batch.id)
@@ -239,7 +249,7 @@ def run_batch_job(batch_id: int) -> None:
         account_ids = json.loads(batch.selected_account_ids or '[]')
         selected_accounts = account_repository.list_by_ids(account_ids)
         settings = settings_service.get_settings()
-        crawler_service.apply_runtime_settings(settings.request_interval)
+        crawler_service.apply_runtime_settings(settings.request_interval, settings.proxy_url)
         logger.info('开始抓取公众号: batch_id=%s, article_count=%s', batch_id, settings.article_count)
 
         def handle_account_start(account_name: str, pending_accounts: list[str]) -> None:
@@ -310,6 +320,18 @@ def run_batch_job(batch_id: int) -> None:
         )
         batch_repository.add_event(batch.id, '爬取任务完成')
         logger.info('爬取任务完成: batch_id=%s, total_articles=%s', batch_id, total_articles)
+    except WechatAuthError as exc:
+        logger.exception('爬取任务登录失效: batch_id=%s', batch_id)
+        AuthService(db).mark_expired('微信登录状态已失效，请重新登录后再抓取')
+        batch = batch_repository.get(batch_id)
+        if batch is not None:
+            batch_repository.update(
+                batch,
+                status='failed',
+                finished_at=datetime.utcnow(),
+                error_message='微信登录状态已失效，请重新登录后再抓取',
+            )
+            batch_repository.add_event(batch.id, '爬取任务失败: 微信登录状态已失效，请重新登录后再抓取', 'error')
     except Exception as exc:
         logger.exception('爬取任务失败: batch_id=%s', batch_id)
         batch = batch_repository.get(batch_id)

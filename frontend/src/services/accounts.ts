@@ -1,10 +1,5 @@
 import { request } from './http'
-import type { Account } from '../types/api'
-
-export type CreateAccountPayload = {
-  name: string
-  isSelected?: boolean
-}
+import type { Account, AccountPrecheckResult, CreateAccountInput } from '../types/api'
 
 export type UpdateAccountPayload = {
   name?: string
@@ -15,10 +10,17 @@ export function listAccounts() {
   return request<Account[]>('/api/accounts')
 }
 
-export function createAccount(payload: CreateAccountPayload) {
+export function createAccount(payload: CreateAccountInput) {
   return request<Account>('/api/accounts', {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+}
+
+export function precheckAccount(name: string) {
+  return request<AccountPrecheckResult>('/api/accounts/precheck', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
   })
 }
 

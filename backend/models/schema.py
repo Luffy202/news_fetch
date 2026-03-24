@@ -25,6 +25,7 @@ class Settings(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     feishu_webhook = Column(String(1000), nullable=True)
+    proxy_url = Column(String(1000), nullable=True)
     article_count = Column(Integer, nullable=False, default=10)
     request_interval = Column(Float, nullable=False, default=4)
     login_status = Column(String(50), nullable=False, default='logged_out')

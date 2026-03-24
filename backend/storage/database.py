@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 
@@ -20,6 +20,14 @@ def init_db() -> None:
     from backend.models.schema import Account, Article, Batch, Settings, TaskEvent  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_settings_columns()
+
+
+def _ensure_settings_columns() -> None:
+    with engine.begin() as connection:
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(settings)"))}
+        if 'proxy_url' not in columns:
+            connection.execute(text('ALTER TABLE settings ADD COLUMN proxy_url VARCHAR(1000)'))
 
 
 def get_db():

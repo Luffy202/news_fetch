@@ -14,6 +14,7 @@ def serialize_settings(settings) -> dict:
         login_status = 'launching_browser'
     return {
         'feishuWebhook': settings.feishu_webhook,
+        'proxyUrl': settings.proxy_url,
         'articleCount': settings.article_count,
         'requestInterval': settings.request_interval,
         'loginStatus': login_status,
@@ -29,6 +30,7 @@ class SettingsService:
         settings = self.repository.get_singleton()
         runtime_config.REQUEST_INTERVAL = settings.request_interval
         runtime_config.ARTICLE_COUNT = settings.article_count
+        runtime_config.PROXY_URL = settings.proxy_url or ''
         runtime_config.FEISHU_WEBHOOK = settings.feishu_webhook or runtime_config.FEISHU_WEBHOOK
         return settings
 
@@ -36,6 +38,7 @@ class SettingsService:
         self,
         *,
         feishu_webhook: str | None | object = None,
+        proxy_url: str | None | object = None,
         article_count: int | None = None,
         request_interval: float | None = None,
         login_status: str | None = None,
@@ -45,6 +48,7 @@ class SettingsService:
         updated = self.repository.update(
             settings,
             feishu_webhook=feishu_webhook,
+            proxy_url=proxy_url,
             article_count=article_count,
             request_interval=request_interval,
             login_status=login_status,
@@ -52,6 +56,7 @@ class SettingsService:
         )
         runtime_config.REQUEST_INTERVAL = updated.request_interval
         runtime_config.ARTICLE_COUNT = updated.article_count
+        runtime_config.PROXY_URL = updated.proxy_url or ''
         runtime_config.FEISHU_WEBHOOK = updated.feishu_webhook or ''
         if updated.feishu_webhook:
             os.environ['FEISHU_WEBHOOK'] = updated.feishu_webhook

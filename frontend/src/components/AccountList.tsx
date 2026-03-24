@@ -9,44 +9,41 @@ type AccountListProps = {
 
 export default function AccountList({ accounts, onToggle, onDelete }: AccountListProps) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {accounts.map((account) => (
-        <div 
+        <div
           key={account.id}
-          className={`
-            relative flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer select-none group
-            ${account.isSelected 
-               ? 'bg-blue-50 border-blue-200 shadow-sm' 
-               : 'bg-white border-gray-200 hover:border-gray-300'
-            }
-          `}
+          className={`group relative flex cursor-pointer select-none items-center justify-between gap-3 rounded-2xl border p-4 transition-all ${
+            account.isSelected ? 'border-slate-900/10 bg-slate-50 shadow-sm' : 'border-gray-200 bg-white hover:border-slate-300'
+          }`}
           onClick={() => onToggle(account)}
         >
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className={`
-              w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 transition-colors
-              ${account.isSelected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}
-            `}>
-              {account.isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+            <div
+              className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border transition-colors ${
+                account.isSelected ? 'border-slate-900 bg-slate-900' : 'border-gray-300 bg-white'
+              }`}
+            >
+              {account.isSelected ? <Check className="h-3.5 w-3.5 text-white" /> : null}
             </div>
-            <span className={`font-medium truncate text-sm ${account.isSelected ? 'text-blue-700' : 'text-gray-700'}`}>
+            <span className={`truncate text-sm font-medium ${account.isSelected ? 'text-slate-900' : 'text-gray-700'}`}>
               {account.name}
             </span>
           </div>
-          
-          {onDelete && (
-             <button 
-               type="button" 
-               onClick={(e) => {
-                 e.stopPropagation()
-                 onDelete(account)
-               }}
-               className="text-gray-400 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-               title="删除"
-             >
-               <Trash2 className="w-4 h-4" />
-             </button>
-          )}
+
+          {onDelete ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onDelete(account)
+              }}
+              className="rounded-lg p-1.5 text-gray-400 opacity-100 transition-colors hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
+              title="删除"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          ) : null}
         </div>
       ))}
     </div>

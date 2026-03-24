@@ -5,8 +5,31 @@ export type Account = {
   isSelected: boolean
 }
 
+export type AccountCandidate = {
+  nickname: string
+  fakeid: string
+}
+
+export type AccountPrecheckResult =
+  | {
+      status: 'exact_match'
+      exactMatch: AccountCandidate
+    }
+  | {
+      status: 'candidates'
+      candidates: AccountCandidate[]
+    }
+
+export type CreateAccountInput = {
+  name: string
+  fakeid?: string
+  resolvedName?: string
+  isSelected?: boolean
+}
+
 export type Settings = {
   feishuWebhook?: string | null
+  proxyUrl?: string | null
   articleCount: number
   requestInterval: number
   loginStatus: 'logged_out' | 'launching_browser' | 'waiting_for_scan' | 'verifying' | 'logged_in' | 'failed' | 'expired'

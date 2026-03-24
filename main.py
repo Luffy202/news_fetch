@@ -68,7 +68,7 @@ def main():
             return
 
     crawler_service.set_credentials(cookie, token)
-    crawler_service.apply_runtime_settings(runtime_config.REQUEST_INTERVAL)
+    crawler_service.apply_runtime_settings(runtime_config.REQUEST_INTERVAL, runtime_config.PROXY_URL)
 
     print(f'开始爬取 {len(runtime_config.ACCOUNTS)} 个公众号，每个 {runtime_config.ARTICLE_COUNT} 篇文章')
     print(f'请求间隔: {runtime_config.REQUEST_INTERVAL} 秒')

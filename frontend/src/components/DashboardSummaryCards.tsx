@@ -22,7 +22,7 @@ function formatDateTime(value?: string | null): string {
 export default function DashboardSummaryCards({ summary }: DashboardSummaryCardsProps) {
   const items = [
     {
-      label: '历史批次',
+      label: '项目批次',
       value: `${summary.totalBatches}`,
       icon: Layers3,
     },
@@ -37,23 +37,23 @@ export default function DashboardSummaryCards({ summary }: DashboardSummaryCards
       icon: Clock3,
     },
     {
-      label: '失败批次',
+      label: '失败项目',
       value: `${summary.failedBatches}`,
       icon: AlertTriangle,
     },
   ]
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-gray-50/80 p-4">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <section className="rounded-[1.25rem] border border-gray-200 bg-gray-50/80 p-3.5 sm:p-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
         {items.map((item) => (
-          <div key={item.label} className="flex items-center gap-3 rounded-xl border border-white bg-white px-4 py-3 shadow-sm">
-            <div className="rounded-lg bg-slate-100 p-2 text-slate-600">
+          <div key={item.label} className="flex items-center gap-3 rounded-2xl border border-white bg-white px-4 py-3 shadow-sm">
+            <div className="rounded-xl bg-slate-100 p-2 text-slate-600">
               <item.icon className="h-4 w-4" />
             </div>
             <div className="min-w-0">
               <div className="text-xs font-medium text-gray-500">{item.label}</div>
-              <div className="truncate text-sm font-semibold text-gray-900">{item.value}</div>
+              <div className="truncate text-sm font-semibold text-gray-900 sm:text-[15px]">{item.value}</div>
             </div>
           </div>
         ))}

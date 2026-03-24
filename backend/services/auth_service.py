@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 class AuthService:
     def __init__(self, db: Session):
+        self.db = db
         self.settings_service = SettingsService(db)
 
     def get_status(self) -> dict:
@@ -38,15 +39,18 @@ class AuthService:
             crawler_service.set_credentials(credentials['cookie'], credentials['token'])
             return True
         except (AuthError, ImportError) as exc:
-            self.settings_service.update_settings(login_status='expired')
-            auth_state_manager.mark_failed(str(exc))
+            self.mark_expired(str(exc))
             logger.warning('恢复登录凭证失败: %s', exc)
             return False
 
-    def trigger_login(self) -> dict:
+    def mark_expired(self, message: str = DEFAULT_AUTH_MESSAGES['expired']) -> None:
+        self.settings_service.update_settings(login_status='expired')
+        auth_state_manager.mark_failed(message)
+
+    def trigger_login(self, force: bool = False) -> dict:
         logger.info('开始登录流程')
         settings = self.settings_service.get_settings()
-        if settings.login_status == 'logged_in' and crawler_service.has_credentials():
+        if not force and settings.login_status == 'logged_in' and crawler_service.has_credentials():
             return self.get_status()
         if not auth_state_manager.begin():
             return self.get_status()

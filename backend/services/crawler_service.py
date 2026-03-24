@@ -6,9 +6,11 @@ from typing import Iterable
 import json
 import logging
 
+import requests
+
 from backend import runtime_config
-from backend.services.wechat_fetcher import fetch_account_articles, set_credentials
-from backend.services.article_parser import enrich_articles_with_content
+from backend.services.wechat_fetcher import fetch_account_articles, set_credentials, set_request_session
+from backend.services.article_parser import enrich_articles_with_content, set_request_session as set_article_parser_session
 from backend.services.article_summarizer import enrich_articles_with_summary
 
 
@@ -17,6 +19,9 @@ class CrawlerService:
         self._cookie = runtime_config.COOKIE
         self._token = runtime_config.TOKEN
         self._output_path = Path(__file__).resolve().parents[2] / 'output' / 'articles.json'
+        self._session = self._build_session(runtime_config.PROXY_URL)
+        set_request_session(self._session)
+        set_article_parser_session(self._session)
         if self._cookie and self._token:
             set_credentials(self._cookie, self._token)
 
@@ -25,6 +30,13 @@ class CrawlerService:
         self._token = token
         set_credentials(cookie, token)
         logger.info('更新爬虫凭证成功')
+
+    def _build_session(self, proxy_url: str | None) -> requests.Session:
+        session = requests.Session()
+        session.trust_env = False
+        if proxy_url:
+            session.proxies.update({'http': proxy_url, 'https': proxy_url})
+        return session
 
     def has_credentials(self) -> bool:
         return bool(self._cookie and self._token)
@@ -52,8 +64,12 @@ class CrawlerService:
         self.write_legacy_output(results)
         return results
 
-    def apply_runtime_settings(self, request_interval: float) -> None:
+    def apply_runtime_settings(self, request_interval: float, proxy_url: str | None = None) -> None:
         runtime_config.REQUEST_INTERVAL = request_interval
+        runtime_config.PROXY_URL = proxy_url or ''
+        self._session = self._build_session(runtime_config.PROXY_URL)
+        set_request_session(self._session)
+        set_article_parser_session(self._session)
 
     def write_legacy_output(self, results) -> None:
         payload = {

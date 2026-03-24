@@ -13,12 +13,18 @@ router = APIRouter(prefix='/api/accounts', tags=['accounts'])
 
 class AccountCreatePayload(BaseModel):
     name: str
+    fakeid: str | None = None
+    resolvedName: str | None = None
     isSelected: bool = False
 
 
 class AccountUpdatePayload(BaseModel):
     name: str | None = None
     isSelected: bool | None = None
+
+
+class AccountPrecheckPayload(BaseModel):
+    name: str
 
 
 @router.get('')
@@ -40,7 +46,12 @@ def list_accounts(db: Session = Depends(get_db)):
 def create_account(payload: AccountCreatePayload, db: Session = Depends(get_db)):
     service = AccountService(db)
     try:
-        account = service.create_account(payload.name, payload.isSelected)
+        account = service.create_account(
+            payload.name,
+            payload.isSelected,
+            fakeid=payload.fakeid,
+            resolved_name=payload.resolvedName,
+        )
     except ConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -51,6 +62,17 @@ def create_account(payload: AccountCreatePayload, db: Session = Depends(get_db))
         'fakeid': account.fakeid,
         'isSelected': account.is_selected,
     }
+
+
+@router.post('/precheck')
+def precheck_account(payload: AccountPrecheckPayload, db: Session = Depends(get_db)):
+    service = AccountService(db)
+    try:
+        return service.precheck_account(payload.name)
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.patch('/{account_id}')

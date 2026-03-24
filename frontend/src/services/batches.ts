@@ -8,3 +8,9 @@ export function listBatches() {
 export function getBatchDetail(batchId: number) {
   return request<BatchDetail>(`/api/batches/${batchId}`)
 }
+
+export function deleteBatch(batchId: number) {
+  return request<void>(`/api/batches/${batchId}`, {
+    method: 'DELETE',
+  })
+}
